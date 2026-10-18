@@ -37,13 +37,26 @@ PART 1: RUNNING LOCALLY (DEVELOPMENT MODE WITH LIVE CHANGES)
    - Frontend URL: http://localhost:3001
    - Watches apps/frontend for UI changes automatically.
 
-6. DEMO LOGIN CREDENTIALS
+6. FIRST-TIME INITIALIZATION & USER CREATION GOVERNANCE
+   - First-Time Fresh Setup:
+     If the database has zero users (e.g. freshly created production database),
+     the Login Page (http://localhost:3001/login) automatically displays the
+     "Initial System Setup" form allowing you to create the initial Super Admin
+     and set their password.
+   - User Protection Rule:
+     Once ANY user exists in the database, the "Create User" form & button
+     disappears permanently from the login page.
+   - Provisioning New Users:
+     All future doctors, cashiers, nurses, and staff can ONLY be provisioned
+     from within the system by the Super Admin via the Employee / HR / IAM module.
+
+7. DEMO LOGIN CREDENTIALS (When using seeded database)
    - Super Admin:     admin@aegis.health       / Admin@123456
    - Doctor (Metro):  dr.marcus@aegis.health   / Staff@123456
    - Cashier (Metro): cashier.metro@aegis.health / Staff@123456
    - Doctor (West):   dr.sarah@aegis.health    / Staff@123456
 
-7. STOPPING LOCAL SERVICES
+8. STOPPING LOCAL SERVICES
    - Stop Frontend/Backend: Press Ctrl + C in their respective terminal windows.
    - Stop PostgreSQL Docker:
      > npm run docker:down

@@ -25,12 +25,22 @@ export interface User {
   employeeId?: string;
 }
 
+export interface InitialSetupData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  phone?: string;
+  centerName?: string;
+}
+
 interface AuthContextType {
   user: User | null;
   activeCenter: Center | null;
   availableCenters: Center[];
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  initialSetup: (data: InitialSetupData) => Promise<void>;
   logout: () => Promise<void>;
   switchCenter: (center: Center) => void;
   hasPermission: (perm: string) => boolean;
@@ -42,6 +52,7 @@ const AuthContext = createContext<AuthContextType>({
   availableCenters: [],
   loading: true,
   login: async () => {},
+  initialSetup: async () => {},
   logout: async () => {},
   switchCenter: () => {},
   hasPermission: () => false,
@@ -127,6 +138,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const initialSetup = async (data: InitialSetupData) => {
+    setLoading(true);
+    try {
+      const res = await apiRequest('/auth/setup', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+
+      localStorage.setItem('aegis_token', res.accessToken);
+      localStorage.setItem('aegis_user', JSON.stringify(res.user));
+      localStorage.setItem('aegis_active_center_id', res.user.center.id);
+      localStorage.setItem('aegis_active_center_name', res.user.center.name);
+      localStorage.setItem('aegis_active_center_code', res.user.center.code);
+
+      setUser(res.user);
+      setActiveCenter(res.user.center);
+
+      try {
+        const centers = await apiRequest<Center[]>('/centers', {
+          headers: { Authorization: `Bearer ${res.accessToken}` },
+        });
+        setAvailableCenters(centers);
+      } catch (e) {
+        setAvailableCenters([res.user.center]);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = async () => {
     try {
       await apiRequest('/auth/logout', { method: 'POST' });
@@ -166,6 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         availableCenters,
         loading,
         login,
+        initialSetup,
         logout,
         switchCenter,
         hasPermission,

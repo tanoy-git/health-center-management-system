@@ -10,6 +10,7 @@ import {
 import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
+import { InitialSetupDto } from './dto/setup.dto';
 import {
   CurrentUser,
   Public,
@@ -22,6 +23,20 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  @Public()
+  @Get('status')
+  async getStatus() {
+    return this.authService.getSetupStatus();
+  }
+
+  @Public()
+  @Post('setup')
+  async setup(@Body() setupDto: InitialSetupDto, @Req() req: Request) {
+    const userAgent = req.headers['user-agent'];
+    const ip = req.ip || req.socket.remoteAddress;
+    return this.authService.initialSetup(setupDto, { userAgent, ip });
+  }
 
   @Public()
   @Post('login')

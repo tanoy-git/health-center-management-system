@@ -1,0 +1,54 @@
+import {
+  Controller,
+  Post,
+  Body,
+  Get,
+  Req,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
+import { Request } from 'express';
+import { AuthService } from './auth.service';
+import { LoginDto } from './dto/login.dto';
+import {
+  CurrentUser,
+  Public,
+  RequirePermissions,
+} from '../../common/decorators';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { PermissionsGuard } from '../../common/guards/permissions.guard';
+
+@Controller('auth')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class AuthController {
+  constructor(private readonly authService: AuthService) {}
+
+  @Public()
+  @Post('login')
+  async login(@Body() loginDto: LoginDto, @Req() req: Request) {
+    const userAgent = req.headers['user-agent'];
+    const ip = req.ip || req.socket.remoteAddress;
+    return this.authService.login(loginDto, { userAgent, ip });
+  }
+
+  @Post('logout')
+  async logout(@CurrentUser() user: any) {
+    return this.authService.logout(user.id, user.sessionId);
+  }
+
+  @Get('me')
+  async getProfile(@CurrentUser('id') userId: string) {
+    return this.authService.getProfile(userId);
+  }
+
+  @Get('sessions')
+  async getSessions(@CurrentUser('id') userId: string) {
+    return this.authService.getActiveSessions(userId);
+  }
+
+  @Post('force-logout/:userId')
+  @RequirePermissions('iam:users:write')
+  async forceLogout(@Param('userId') targetUserId: string) {
+    return this.authService.forceLogout(targetUserId);
+  }
+}

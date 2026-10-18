@@ -1,0 +1,461 @@
+// Aegis Enterprise HIS v2.0 - Multi-Tenant Domain-Driven Database Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------
+// 1. CENTER / MULTI-TENANCY REGISTRY
+// ----------------------------------------------------
+model Center {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  address     String?
+  phone       String?
+  email       String?
+  status      String   @default("ACTIVE") // ACTIVE, INACTIVE
+
+  // Audit & Soft Delete
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  deleted_at  DateTime?
+  created_by  String?
+  updated_by  String?
+
+  // Relations
+  users               User[]
+  employees           Employee[]
+  attendances         Attendance[]
+  payrolls            Payroll[]
+  patients            Patient[]
+  services            ServiceCatalog[]
+  invoices            Invoice[]
+  invoice_items       InvoiceItem[]
+  invoice_audit_logs  InvoiceAuditLog[]
+  medicines           Medicine[]
+  prescriptions       Prescription[]
+  prescription_items  PrescriptionItem[]
+  diagnostic_reports  DiagnosticReport[]
+
+  @@map("centers")
+}
+
+// ----------------------------------------------------
+// 2. IAM & DYNAMIC RBAC
+// ----------------------------------------------------
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  is_system   Boolean  @default(false)
+
+  // Audit & Soft Delete
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  deleted_at  DateTime?
+  created_by  String?
+  updated_by  String?
+
+  role_permissions RolePermission[]
+  users            User[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  code        String   @unique
+  name        String
+  module      String   // IAM, HR, PATIENTS, BILLING, CLINICAL, DIAGNOSTICS
+  description String?
+
+  // Audit & Soft Delete
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  deleted_at  DateTime?
+  created_by  String?
+  updated_by  String?
+
+  role_permissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id            String     @id @default(uuid())
+  role_id       String
+  permission_id String
+
+  // Audit & Soft Delete
+  created_at    DateTime   @default(now())
+  updated_at    DateTime   @updatedAt
+  deleted_at    DateTime?
+  created_by    String?
+  updated_by    String?
+
+  role          Role       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission    Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@unique([role_id, permission_id])
+  @@map("role_permissions")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  center_id     String
+  role_id       String
+  email         String    @unique
+  password_hash String
+  first_name    String
+  last_name     String
+  phone         String?
+  status        String    @default("ACTIVE") // ACTIVE, INACTIVE, SUSPENDED
+
+  // Audit & Soft Delete
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+  created_by    String?
+  updated_by    String?
+
+  center        Center    @relation(fields: [center_id], references: [id])
+  role          Role      @relation(fields: [role_id], references: [id])
+  employee      Employee?
+
+  @@map("users")
+}
+
+// ----------------------------------------------------
+// 3. HR, ATTENDANCE & PAYROLL
+// ----------------------------------------------------
+model Employee {
+  id            String    @id @default(uuid())
+  center_id     String
+  user_id       String    @unique
+  employee_code String    @unique
+  designation   String
+  department    String
+  base_salary   Decimal   @db.Decimal(10, 2)
+  joining_date  DateTime  @default(now())
+  status        String    @default("ACTIVE") // ACTIVE, ON_LEAVE, TERMINATED
+
+  // Audit & Soft Delete
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+  created_by    String?
+  updated_by    String?
+
+  center        Center        @relation(fields: [center_id], references: [id])
+  user          User          @relation(fields: [user_id], references: [id])
+  attendances   Attendance[]
+  payrolls      Payroll[]
+
+  @@map("employees")
+}
+
+model Attendance {
+  id             String    @id @default(uuid())
+  center_id      String
+  employee_id    String
+  date           DateTime  @db.Date
+  punch_in       DateTime  @default(now())
+  punch_out      DateTime?
+  status         String    @default("PRESENT") // PRESENT, LATE, HALF_DAY, ABSENT
+  trigger_source String    @default("LOGIN_EVENT") // LOGIN_EVENT, MANUAL_OVERRIDE
+
+  // Audit & Soft Delete
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  deleted_at     DateTime?
+  created_by     String?
+  updated_by     String?
+
+  center         Center    @relation(fields: [center_id], references: [id])
+  employee       Employee  @relation(fields: [employee_id], references: [id])
+
+  @@unique([center_id, employee_id, date])
+  @@map("attendances")
+}
+
+model Payroll {
+  id                 String    @id @default(uuid())
+  center_id          String
+  employee_id        String
+  month_year         String    // Format: "YYYY-MM"
+  base_salary        Decimal   @db.Decimal(10, 2)
+  total_present_days Int       @default(0)
+  deductions         Decimal   @default(0.00) @db.Decimal(10, 2)
+  bonuses            Decimal   @default(0.00) @db.Decimal(10, 2)
+  net_salary         Decimal   @db.Decimal(10, 2)
+  status             String    @default("DRAFT") // DRAFT, APPROVED, PAID
+  payment_date       DateTime?
+  notes              String?
+
+  // Audit & Soft Delete
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+  deleted_at         DateTime?
+  created_by         String?
+  updated_by         String?
+
+  center             Center    @relation(fields: [center_id], references: [id])
+  employee           Employee  @relation(fields: [employee_id], references: [id])
+
+  @@unique([center_id, employee_id, month_year])
+  @@map("payrolls")
+}
+
+// ----------------------------------------------------
+// 4. PATIENT MASTER INDEX
+// ----------------------------------------------------
+model Patient {
+  id                String    @id @default(uuid())
+  center_id         String
+  uhid              String    @unique // e.g. UHID-2026-10-000001
+  first_name        String
+  last_name         String
+  dob               DateTime?
+  gender            String    // MALE, FEMALE, OTHER
+  blood_group       String?   // A+, A-, B+, B-, AB+, AB-, O+, O-
+  phone             String
+  email             String?
+  address           String?
+  emergency_contact String?
+
+  // Audit & Soft Delete
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+  deleted_at        DateTime?
+  created_by        String?
+  updated_by        String?
+
+  center            Center    @relation(fields: [center_id], references: [id])
+  invoices          Invoice[]
+  prescriptions     Prescription[]
+  diagnostic_reports DiagnosticReport[]
+
+  @@map("patients")
+}
+
+// ----------------------------------------------------
+// 5. SERVICE & BILLING POS
+// ----------------------------------------------------
+model ServiceCatalog {
+  id          String   @id @default(uuid())
+  center_id   String
+  code        String
+  name        String
+  category    String   // CONSULTATION, LAB_TEST, USG, RADIOLOGY, PROCEDURE
+  price       Decimal  @db.Decimal(10, 2)
+  tax_rate    Decimal  @default(0.00) @db.Decimal(5, 2)
+  status      String   @default("ACTIVE") // ACTIVE, INACTIVE
+
+  // Audit & Soft Delete
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  deleted_at  DateTime?
+  created_by  String?
+  updated_by  String?
+
+  center        Center        @relation(fields: [center_id], references: [id])
+  invoice_items InvoiceItem[]
+
+  @@unique([center_id, code])
+  @@map("service_catalog")
+}
+
+model Invoice {
+  id               String    @id @default(uuid())
+  center_id        String
+  invoice_number   String    @unique // e.g. INV-2026-10-0001
+  patient_id       String
+  cashier_id       String?
+  subtotal         Decimal   @db.Decimal(10, 2)
+  discount_amount  Decimal   @default(0.00) @db.Decimal(10, 2)
+  discount_percent Decimal   @default(0.00) @db.Decimal(5, 2)
+  tax_amount       Decimal   @default(0.00) @db.Decimal(10, 2)
+  total_amount     Decimal   @db.Decimal(10, 2)
+  paid_amount      Decimal   @default(0.00) @db.Decimal(10, 2)
+  balance_amount   Decimal   @default(0.00) @db.Decimal(10, 2)
+  payment_method   String    @default("CASH") // CASH, CARD, MOBILE_BANKING, INSURANCE
+  payment_status   String    @default("PAID") // PAID, PARTIAL, DUE, CANCELLED
+  notes            String?
+
+  // Audit & Soft Delete
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @updatedAt
+  deleted_at       DateTime?
+  created_by       String?
+  updated_by       String?
+
+  center           Center            @relation(fields: [center_id], references: [id])
+  patient          Patient           @relation(fields: [patient_id], references: [id])
+  items            InvoiceItem[]
+  audit_logs       InvoiceAuditLog[]
+
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  center_id   String
+  invoice_id  String
+  service_id  String?
+  item_name   String
+  category    String
+  unit_price  Decimal  @db.Decimal(10, 2)
+  quantity    Int      @default(1)
+  total_price Decimal  @db.Decimal(10, 2)
+
+  // Audit & Soft Delete
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  deleted_at  DateTime?
+  created_by  String?
+  updated_by  String?
+
+  center      Center          @relation(fields: [center_id], references: [id])
+  invoice     Invoice         @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  service     ServiceCatalog? @relation(fields: [service_id], references: [id])
+
+  @@map("invoice_items")
+}
+
+model InvoiceAuditLog {
+  id           String    @id @default(uuid())
+  center_id    String
+  invoice_id   String
+  action       String    // CREATED, MODIFIED, VOIDED, DISCOUNT_OVERRIDE
+  performed_by String
+  details      String    @db.Text // JSON summary of modifications
+
+  // Audit & Soft Delete
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+  deleted_at   DateTime?
+  created_by   String?
+  updated_by   String?
+
+  center       Center    @relation(fields: [center_id], references: [id])
+  invoice      Invoice   @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+
+  @@map("invoice_audit_logs")
+}
+
+// ----------------------------------------------------
+// 6. PHARMACY & PRESCRIPTION ENGINE
+// ----------------------------------------------------
+model Medicine {
+  id             String    @id @default(uuid())
+  center_id      String
+  code           String
+  name           String
+  generic_name   String?
+  form           String    // TABLET, CAPSULE, SYRUP, INJECTION, OINTMENT, DROPS
+  strength       String    // e.g. 500mg, 10ml, 250mg/5ml
+  price          Decimal   @db.Decimal(10, 2)
+  stock_quantity Int       @default(0)
+  reorder_level  Int       @default(20)
+  status         String    @default("ACTIVE") // ACTIVE, INACTIVE
+
+  // Audit & Soft Delete
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  deleted_at     DateTime?
+  created_by     String?
+  updated_by     String?
+
+  center             Center             @relation(fields: [center_id], references: [id])
+  prescription_items PrescriptionItem[]
+
+  @@unique([center_id, code])
+  @@map("medicines")
+}
+
+model Prescription {
+  id                  String    @id @default(uuid())
+  center_id           String
+  prescription_number String    @unique // e.g. RX-2026-10-0001
+  patient_id          String
+  doctor_id           String
+  clinical_notes      String?   @db.Text
+  diagnosis           String?   @db.Text
+  vitals              String?   @db.Text // JSON string: { bp, pulse, temp, weight, spo2 }
+  follow_up_date      DateTime?
+  status              String    @default("ACTIVE")
+
+  // Audit & Soft Delete
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+  deleted_at          DateTime?
+  created_by          String?
+  updated_by          String?
+
+  center              Center             @relation(fields: [center_id], references: [id])
+  patient             Patient            @relation(fields: [patient_id], references: [id])
+  items               PrescriptionItem[]
+
+  @@map("prescriptions")
+}
+
+model PrescriptionItem {
+  id              String    @id @default(uuid())
+  center_id       String
+  prescription_id String
+  medicine_id     String?
+  medicine_name   String
+  dosage          String    // e.g. 1-0-1, 1 tablet twice daily
+  duration        String    // e.g. 5 days, 1 month
+  instructions    String?   // e.g. After food, Plenty of water
+
+  // Audit & Soft Delete
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  deleted_at      DateTime?
+  created_by      String?
+  updated_by      String?
+
+  center          Center        @relation(fields: [center_id], references: [id])
+  prescription    Prescription  @relation(fields: [prescription_id], references: [id], onDelete: Cascade)
+  medicine        Medicine?     @relation(fields: [medicine_id], references: [id])
+
+  @@map("prescription_items")
+}
+
+// ----------------------------------------------------
+// 7. DIAGNOSTICS & LAB/USG REPORTS
+// ----------------------------------------------------
+model DiagnosticReport {
+  id                String    @id @default(uuid())
+  center_id         String
+  report_number     String    @unique // e.g. DIAG-2026-10-0001
+  patient_id        String
+  doctor_id         String?
+  pathologist_id    String?
+  test_type         String    // LAB, USG, XRAY, ECG, ECHO
+  test_name         String
+  findings          String    @db.Text // Rich-text formatted findings
+  impression        String?   @db.Text
+  attachments       String?   @db.Text // JSON string: array of file URLs / DICOM references
+  status            String    @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED, SIGNED_OFF
+  signed_off_at     DateTime?
+  digital_signature String?
+
+  // Audit & Soft Delete
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+  deleted_at        DateTime?
+  created_by        String?
+  updated_by        String?
+
+  center            Center    @relation(fields: [center_id], references: [id])
+  patient           Patient   @relation(fields: [patient_id], references: [id])
+
+  @@map("diagnostic_reports")
+}

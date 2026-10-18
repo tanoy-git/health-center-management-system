@@ -1,0 +1,22 @@
+{
+  "name": "aegis-enterprise-his",
+  "version": "2.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:backend": "npm --workspace=apps/backend run start:dev",
+    "dev:frontend": "npm --workspace=apps/frontend run dev",
+    "build:backend": "npm --workspace=apps/backend run build",
+    "build:frontend": "npm --workspace=apps/frontend run build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "prisma:generate": "npm --workspace=apps/backend run prisma:generate",
+    "prisma:migrate": "npm --workspace=apps/backend run prisma:migrate",
+    "prisma:seed": "npm --workspace=apps/backend run prisma:seed"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

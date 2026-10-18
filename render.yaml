@@ -1,0 +1,44 @@
+databases:
+  - name: aegis-postgres
+    databaseName: aegis_his
+    user: aegis_user
+    plan: free
+
+services:
+  - type: keyvalue
+    name: aegis-redis
+    plan: free
+
+  # 1. Your NestJS Backend
+  - type: web
+    name: aegis-backend
+    env: docker
+    plan: free
+    dockerContext: ./apps/backend
+    dockerfilePath: ./apps/backend/Dockerfile
+    envVars:
+      # Automatically injects the Postgres connection string
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aegis-postgres
+          property: connectionString
+      # Automatically injects the Redis connection string
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: aegis-redis
+          envVarKey: REDIS_URL
+
+  # 2. Your Next.js Frontend
+  - type: web
+    name: aegis-frontend
+    env: docker
+    plan: free
+    dockerContext: ./apps/frontend
+    dockerfilePath: ./apps/frontend/Dockerfile
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: aegis-backend
+          envVarKey: RENDER_EXTERNAL_URL

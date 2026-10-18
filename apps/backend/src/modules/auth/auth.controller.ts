@@ -12,6 +12,10 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { InitialSetupDto } from './dto/setup.dto';
 import {
+  ChangePasswordDto,
+  AdminResetPasswordDto,
+} from './dto/change-password.dto';
+import {
   CurrentUser,
   Public,
   RequirePermissions,
@@ -49,6 +53,23 @@ export class AuthController {
   @Post('logout')
   async logout(@CurrentUser() user: any) {
     return this.authService.logout(user.id, user.sessionId);
+  }
+
+  @Post('change-password')
+  async changePassword(
+    @CurrentUser('id') userId: string,
+    @Body() changePasswordDto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(userId, changePasswordDto);
+  }
+
+  @Post('admin/reset-password/:userId')
+  @RequirePermissions('iam:users:write')
+  async adminResetPassword(
+    @Param('userId') targetUserId: string,
+    @Body() resetDto: AdminResetPasswordDto,
+  ) {
+    return this.authService.adminResetPassword(targetUserId, resetDto.newPassword);
   }
 
   @Get('me')

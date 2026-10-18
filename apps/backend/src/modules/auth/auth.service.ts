@@ -13,6 +13,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { LoginDto } from './dto/login.dto';
 import { InitialSetupDto } from './dto/setup.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Injectable()
 export class AuthService {
@@ -299,6 +300,80 @@ export class AuthService {
           }
         : null,
       permissions,
+    };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // 1. Verify current password
+    const isMatch = await bcrypt.compare(dto.currentPassword, user.password_hash);
+    if (!isMatch) {
+      throw new BadRequestException('Current password does not match. Please verify your current password.');
+    }
+
+    // 2. Prevent setting the same password
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException('New password cannot be the same as your current password.');
+    }
+
+    // 3. Hash new password
+    const newHash = await bcrypt.hash(dto.newPassword, 10);
+
+    // 4. Update password in database
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        password_hash: newHash,
+        updated_at: new Date(),
+      },
+    });
+
+    this.logger.log(`Password successfully updated for user ${user.email}`);
+
+    return {
+      success: true,
+      message: 'Password changed successfully',
+    };
+  }
+
+  async adminResetPassword(targetUserId: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (newPassword.length < 6) {
+      throw new BadRequestException('Password must be at least 6 characters long');
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+
+    await this.prisma.user.update({
+      where: { id: targetUserId },
+      data: {
+        password_hash: newHash,
+        updated_at: new Date(),
+      },
+    });
+
+    // Invalidate existing sessions for the target user
+    await this.redisService.invalidateAllUserSessions(targetUserId);
+
+    this.logger.log(`Admin reset password for user ${user.email}`);
+
+    return {
+      success: true,
+      message: `Password reset successfully for ${user.email}`,
     };
   }
 }

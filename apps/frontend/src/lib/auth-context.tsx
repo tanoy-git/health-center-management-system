@@ -41,6 +41,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   initialSetup: (data: InitialSetupData) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
   switchCenter: (center: Center) => void;
   hasPermission: (perm: string) => boolean;
@@ -53,6 +54,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   login: async () => {},
   initialSetup: async () => {},
+  changePassword: async () => {},
   logout: async () => {},
   switchCenter: () => {},
   hasPermission: () => false,
@@ -168,6 +170,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    await apiRequest('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  };
+
   const logout = async () => {
     try {
       await apiRequest('/auth/logout', { method: 'POST' });
@@ -208,6 +217,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading,
         login,
         initialSetup,
+        changePassword,
         logout,
         switchCenter,
         hasPermission,

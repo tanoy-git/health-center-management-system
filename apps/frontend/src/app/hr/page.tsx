@@ -15,6 +15,8 @@ import {
   Check,
   Building2,
   X,
+  KeyRound,
+  Lock,
 } from 'lucide-react';
 
 export default function HrPage() {
@@ -41,6 +43,15 @@ export default function HrPage() {
     department: 'Clinical Medicine',
     baseSalary: 5000,
   });
+
+  // Admin Reset Password Modal State
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [targetEmployee, setTargetEmployee] = useState<any>(null);
+  const [adminNewPassword, setAdminNewPassword] = useState('');
+  const [adminConfirmPassword, setAdminConfirmPassword] = useState('');
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState(false);
+  const [resetSubmitting, setResetSubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -91,6 +102,43 @@ export default function HrPage() {
       loadData();
     } catch (err: any) {
       alert(err.message || 'Failed to update payroll status');
+    }
+  };
+
+  const handleAdminResetSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetEmployee?.user?.id) return;
+    setResetError(null);
+    setResetSuccess(false);
+
+    if (adminNewPassword.length < 6) {
+      setResetError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    if (adminNewPassword !== adminConfirmPassword) {
+      setResetError('Passwords do not match.');
+      return;
+    }
+
+    setResetSubmitting(true);
+    try {
+      await apiRequest(`/auth/admin/reset-password/${targetEmployee.user.id}`, {
+        method: 'POST',
+        body: JSON.stringify({ newPassword: adminNewPassword }),
+      });
+      setResetSuccess(true);
+      setTimeout(() => {
+        setResetModalOpen(false);
+        setTargetEmployee(null);
+        setAdminNewPassword('');
+        setAdminConfirmPassword('');
+        setResetSuccess(false);
+      }, 1500);
+    } catch (err: any) {
+      setResetError(err.message || 'Failed to reset password.');
+    } finally {
+      setResetSubmitting(false);
     }
   };
 
@@ -291,6 +339,7 @@ export default function HrPage() {
                   <th className="py-2.5 px-4">Department</th>
                   <th className="py-2.5 px-4">Base Salary</th>
                   <th className="py-2.5 px-4">Status</th>
+                  <th className="py-2.5 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -320,6 +369,26 @@ export default function HrPage() {
                       <span className="rounded bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
                         {emp.status}
                       </span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      {emp.user?.id && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTargetEmployee(emp);
+                            setResetError(null);
+                            setResetSuccess(false);
+                            setAdminNewPassword('');
+                            setAdminConfirmPassword('');
+                            setResetModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card hover:bg-muted px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors shadow-sm"
+                          title="Reset employee password"
+                        >
+                          <KeyRound className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                          <span>Reset Password</span>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -591,6 +660,104 @@ export default function HrPage() {
                   className="rounded bg-blue-600 hover:bg-blue-700 px-5 py-2 font-semibold text-white shadow-sm"
                 >
                   Onboard Employee
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Reset Password Modal */}
+      {resetModalOpen && targetEmployee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4">
+            <div className="flex items-start justify-between border-b border-border/60 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                  <KeyRound className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">
+                    Reset Employee Password
+                  </h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    {targetEmployee.user?.first_name} {targetEmployee.user?.last_name} ({targetEmployee.user?.email})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setResetModalOpen(false)}
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {resetSuccess && (
+              <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3 text-xs text-emerald-600 dark:text-emerald-400">
+                <Check className="h-4 w-4 shrink-0" />
+                <span>Password has been reset successfully!</span>
+              </div>
+            )}
+
+            {resetError && (
+              <div className="flex items-center gap-2 rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{resetError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleAdminResetSubmit} className="space-y-3.5">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">
+                  New Password *
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="password"
+                    required
+                    value={adminNewPassword}
+                    onChange={(e) => setAdminNewPassword(e.target.value)}
+                    placeholder="Minimum 6 characters"
+                    className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">
+                  Confirm Password *
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="password"
+                    required
+                    value={adminConfirmPassword}
+                    onChange={(e) => setAdminConfirmPassword(e.target.value)}
+                    placeholder="Confirm new password"
+                    className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setResetModalOpen(false)}
+                  disabled={resetSubmitting}
+                  className="rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetSubmitting || resetSuccess}
+                  className="rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
+                >
+                  {resetSubmitting ? 'Updating...' : 'Set New Password'}
                 </button>
               </div>
             </form>

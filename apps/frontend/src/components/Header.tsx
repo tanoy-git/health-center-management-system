@@ -12,13 +12,16 @@ import {
   ShieldCheck,
   User as UserIcon,
   Check,
+  KeyRound,
 } from 'lucide-react';
+import ChangePasswordModal from './ChangePasswordModal';
 
 export default function Header() {
   const { user, activeCenter, availableCenters, switchCenter, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [centerDropdownOpen, setCenterDropdownOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
 
   if (!user) return null;
 
@@ -167,7 +170,18 @@ export default function Header() {
                   </div>
                 </div>
 
-                <div className="mt-1">
+                <div className="mt-1 space-y-0.5">
+                  <button
+                    onClick={() => {
+                      setUserDropdownOpen(false);
+                      setPasswordModalOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+                  >
+                    <KeyRound className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                    <span>Change Password</span>
+                  </button>
+
                   <button
                     onClick={() => {
                       setUserDropdownOpen(false);
@@ -184,6 +198,12 @@ export default function Header() {
           </div>
         </div>
       </div>
+
+      {/* Change Password Modal accessible by all users */}
+      <ChangePasswordModal
+        isOpen={passwordModalOpen}
+        onClose={() => setPasswordModalOpen(false)}
+      />
     </header>
   );
 }

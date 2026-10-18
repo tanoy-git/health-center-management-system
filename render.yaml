@@ -8,6 +8,7 @@ services:
   - type: keyvalue
     name: aegis-redis
     plan: free
+    ipAllowList: []
 
   # 1. Your NestJS Backend
   - type: web
@@ -27,7 +28,7 @@ services:
         fromService:
           type: keyvalue
           name: aegis-redis
-          envVarKey: REDIS_URL
+          property: connectionString
 
   # 2. Your Next.js Frontend
   - type: web

@@ -11,6 +11,7 @@
     "build:backend": "npm --workspace=apps/backend run build",
     "build:frontend": "npm --workspace=apps/frontend run build",
     "docker:up": "docker compose up -d",
+    "docker:postgres": "docker compose up -d postgres",
     "docker:down": "docker compose down",
     "prisma:generate": "npm --workspace=apps/backend run prisma:generate",
     "prisma:migrate": "npm --workspace=apps/backend run prisma:migrate",

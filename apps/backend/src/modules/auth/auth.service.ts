@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   Logger,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -11,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { LoginDto } from './dto/login.dto';
+import { InitialSetupDto } from './dto/setup.dto';
 
 @Injectable()
 export class AuthService {
@@ -22,6 +24,107 @@ export class AuthService {
     private redisService: RedisService,
     private eventEmitter: EventEmitter2,
   ) {}
+
+  async getSetupStatus() {
+    const userCount = await this.prisma.user.count();
+    return {
+      setupRequired: userCount === 0,
+      userCount,
+    };
+  }
+
+  async initialSetup(
+    dto: InitialSetupDto,
+    clientInfo?: { userAgent?: string; ip?: string },
+  ) {
+    const userCount = await this.prisma.user.count();
+    if (userCount > 0) {
+      throw new BadRequestException(
+        'Initial setup has already been completed. New users can only be provisioned by a Super Admin.',
+      );
+    }
+
+    // 1. Find or create SUPER_ADMIN role
+    let role = await this.prisma.role.findUnique({
+      where: { name: 'SUPER_ADMIN' },
+    });
+    if (!role) {
+      role = await this.prisma.role.create({
+        data: {
+          name: 'SUPER_ADMIN',
+          description: 'Full administrative access across all centers',
+          is_system: true,
+        },
+      });
+    }
+
+    // 2. Find or create default Center
+    let center = await this.prisma.center.findFirst({
+      where: { status: 'ACTIVE' },
+    });
+    if (!center) {
+      center = await this.prisma.center.create({
+        data: {
+          code: 'CTR-MAIN',
+          name: dto.centerName?.trim() || 'Central Hospital & Health Center',
+          address: '100 Healthcare Boulevard, Suite 100',
+          phone: dto.phone || '+1 555-0100',
+          email: dto.email,
+          status: 'ACTIVE',
+        },
+      });
+    }
+
+    // 3. Hash password
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+
+    // 4. Create the initial Super Admin user
+    const user = await this.prisma.user.create({
+      data: {
+        email: dto.email.toLowerCase().trim(),
+        password_hash: passwordHash,
+        first_name: dto.firstName.trim(),
+        last_name: dto.lastName.trim(),
+        phone: dto.phone || null,
+        center_id: center.id,
+        role_id: role.id,
+        status: 'ACTIVE',
+      },
+      include: {
+        center: true,
+        role: true,
+      },
+    });
+
+    // 5. Create employee profile for Super Admin
+    const employeeCode = 'EMP-0001';
+    let employee = await this.prisma.employee.findUnique({
+      where: { employee_code: employeeCode },
+    });
+    if (!employee) {
+      await this.prisma.employee.create({
+        data: {
+          user_id: user.id,
+          center_id: center.id,
+          employee_code: employeeCode,
+          designation: 'Chief Administrator',
+          department: 'Administration',
+          base_salary: 10000.0,
+          status: 'ACTIVE',
+        },
+      });
+    }
+
+    this.logger.log(
+      `Initial Super Admin (${user.email}) successfully provisioned via setup wizard.`,
+    );
+
+    // 6. Automatically log in and return active session
+    return this.login(
+      { email: dto.email, password: dto.password },
+      clientInfo,
+    );
+  }
 
   async login(loginDto: LoginDto, clientInfo?: { userAgent?: string; ip?: string }) {
     const user = await this.prisma.user.findUnique({

@@ -17,8 +17,13 @@ export interface UserSessionData {
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
-  private client: Redis;
+  private client: Redis | null = null;
   private readonly sessionTtl = 86400; // 24 hours in seconds
+  private isConnected = false;
+
+  // In-memory fallback for local development without Redis
+  private readonly inMemorySessions = new Map<string, UserSessionData>();
+  private readonly inMemoryUserSessions = new Map<string, Set<string>>();
 
   constructor(private configService: ConfigService) {}
 
@@ -28,24 +33,36 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const port = this.configService.get<number>('REDIS_PORT', 6379);
     const password = this.configService.get<string>('REDIS_PASSWORD', '');
 
+    const redisOptions = {
+      lazyConnect: true,
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+      retryStrategy: () => null, // Do not spam reconnects if Redis is not running locally
+    };
+
     if (redisUrl) {
-      this.client = new Redis(redisUrl, {
-        lazyConnect: true,
-        maxRetriesPerRequest: 3,
-      });
+      this.client = new Redis(redisUrl, redisOptions);
     } else {
       this.client = new Redis({
         host,
         port,
         password: password || undefined,
-        lazyConnect: true,
-        maxRetriesPerRequest: 3,
+        ...redisOptions,
       });
     }
+
+    // Attach silent error listener so ECONNREFUSED does not spam unhandled error events
+    this.client.on('error', (err) => {
+      if (this.isConnected) {
+        this.logger.warn(`Redis error: ${err.message}`);
+      }
+      this.isConnected = false;
+    });
 
     this.client
       .connect()
       .then(() => {
+        this.isConnected = true;
         if (redisUrl) {
           this.logger.log('Connected to Redis via REDIS_URL');
         } else {
@@ -53,17 +70,24 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         }
       })
       .catch((err) => {
-        this.logger.warn(`Redis connection warning: ${err.message}. Using in-memory fallback.`);
+        this.isConnected = false;
+        this.logger.warn(
+          `Redis is not running (${err.message}). Using built-in In-Memory session manager.`,
+        );
       });
   }
 
   async onModuleDestroy() {
-    if (this.client) {
-      await this.client.quit();
+    if (this.client && this.isConnected) {
+      try {
+        await this.client.quit();
+      } catch {
+        // Disconnect gracefully
+      }
     }
   }
 
-  getClient(): Redis {
+  getClient(): Redis | null {
     return this.client;
   }
 
@@ -73,97 +97,164 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async createSession(session: UserSessionData): Promise<void> {
-    try {
-      const key = this.getSessionKey(session.userId, session.sessionId);
-      await this.client.set(key, JSON.stringify(session), 'EX', this.sessionTtl);
-      
-      // Also register session in user's active session set
-      await this.client.sadd(`aegis:user_sessions:${session.userId}`, session.sessionId);
-    } catch (error) {
-      this.logger.error(`Error creating session: ${error.message}`);
+    const key = this.getSessionKey(session.userId, session.sessionId);
+
+    // If connected to Redis, save in Redis
+    if (this.isConnected && this.client) {
+      try {
+        await this.client.set(key, JSON.stringify(session), 'EX', this.sessionTtl);
+        await this.client.sadd(`aegis:user_sessions:${session.userId}`, session.sessionId);
+        return;
+      } catch (error) {
+        this.logger.warn(`Redis session write failed: ${error.message}. Saving in memory.`);
+        this.isConnected = false;
+      }
     }
+
+    // In-memory fallback
+    this.inMemorySessions.set(key, session);
+    if (!this.inMemoryUserSessions.has(session.userId)) {
+      this.inMemoryUserSessions.set(session.userId, new Set());
+    }
+    this.inMemoryUserSessions.get(session.userId)!.add(session.sessionId);
   }
 
   async getSession(userId: string, sessionId: string): Promise<UserSessionData | null> {
-    try {
-      const key = this.getSessionKey(userId, sessionId);
-      const data = await this.client.get(key);
-      if (!data) return null;
-      return JSON.parse(data) as UserSessionData;
-    } catch (error) {
-      this.logger.error(`Error fetching session: ${error.message}`);
-      return null;
+    const key = this.getSessionKey(userId, sessionId);
+
+    if (this.isConnected && this.client) {
+      try {
+        const data = await this.client.get(key);
+        if (!data) return null;
+        return JSON.parse(data) as UserSessionData;
+      } catch (error) {
+        this.logger.warn(`Redis session get failed: ${error.message}`);
+        this.isConnected = false;
+      }
     }
+
+    // In-memory fallback
+    return this.inMemorySessions.get(key) || null;
   }
 
   async isSessionActive(userId: string, sessionId: string): Promise<boolean> {
-    try {
-      const key = this.getSessionKey(userId, sessionId);
-      const exists = await this.client.exists(key);
-      return exists === 1;
-    } catch (error) {
-      // In case Redis is temporarily down, fail safe or log
-      this.logger.warn(`Redis isSessionActive error: ${error.message}`);
-      return true;
+    const key = this.getSessionKey(userId, sessionId);
+
+    if (this.isConnected && this.client) {
+      try {
+        const exists = await this.client.exists(key);
+        return exists === 1;
+      } catch {
+        this.isConnected = false;
+      }
     }
+
+    // In-memory fallback: active if present in memory
+    return this.inMemorySessions.has(key);
   }
 
   async touchSession(userId: string, sessionId: string): Promise<void> {
-    try {
-      const key = this.getSessionKey(userId, sessionId);
-      const data = await this.client.get(key);
-      if (data) {
-        const session: UserSessionData = JSON.parse(data);
-        session.lastActiveAt = new Date().toISOString();
-        await this.client.set(key, JSON.stringify(session), 'EX', this.sessionTtl);
+    const key = this.getSessionKey(userId, sessionId);
+
+    if (this.isConnected && this.client) {
+      try {
+        const data = await this.client.get(key);
+        if (data) {
+          const session: UserSessionData = JSON.parse(data);
+          session.lastActiveAt = new Date().toISOString();
+          await this.client.set(key, JSON.stringify(session), 'EX', this.sessionTtl);
+          return;
+        }
+      } catch {
+        this.isConnected = false;
       }
-    } catch (error) {
-      this.logger.error(`Error touching session: ${error.message}`);
+    }
+
+    // In-memory fallback
+    const session = this.inMemorySessions.get(key);
+    if (session) {
+      session.lastActiveAt = new Date().toISOString();
+      this.inMemorySessions.set(key, session);
     }
   }
 
   async invalidateSession(userId: string, sessionId: string): Promise<void> {
-    try {
-      const key = this.getSessionKey(userId, sessionId);
-      await this.client.del(key);
-      await this.client.srem(`aegis:user_sessions:${userId}`, sessionId);
-      this.logger.log(`Session ${sessionId} invalidated for user ${userId}`);
-    } catch (error) {
-      this.logger.error(`Error invalidating session: ${error.message}`);
+    const key = this.getSessionKey(userId, sessionId);
+
+    if (this.isConnected && this.client) {
+      try {
+        await this.client.del(key);
+        await this.client.srem(`aegis:user_sessions:${userId}`, sessionId);
+        this.logger.log(`Session ${sessionId} invalidated for user ${userId}`);
+        return;
+      } catch {
+        this.isConnected = false;
+      }
     }
+
+    // In-memory fallback
+    this.inMemorySessions.delete(key);
+    this.inMemoryUserSessions.get(userId)?.delete(sessionId);
+    this.logger.log(`In-memory session ${sessionId} invalidated for user ${userId}`);
   }
 
   // Force Logout: Revoke ALL active sessions for a user
   async invalidateAllUserSessions(userId: string): Promise<void> {
-    try {
-      const sessionIds = await this.client.smembers(`aegis:user_sessions:${userId}`);
-      for (const sid of sessionIds) {
-        await this.client.del(this.getSessionKey(userId, sid));
+    if (this.isConnected && this.client) {
+      try {
+        const sessionIds = await this.client.smembers(`aegis:user_sessions:${userId}`);
+        for (const sid of sessionIds) {
+          await this.client.del(this.getSessionKey(userId, sid));
+        }
+        await this.client.del(`aegis:user_sessions:${userId}`);
+        this.logger.log(`All sessions revoked for user ${userId}`);
+        return;
+      } catch {
+        this.isConnected = false;
       }
-      await this.client.del(`aegis:user_sessions:${userId}`);
-      this.logger.log(`All sessions revoked (Forced Logout) for user ${userId}`);
-    } catch (error) {
-      this.logger.error(`Error revoking all user sessions: ${error.message}`);
     }
+
+    // In-memory fallback
+    const sessionIds = this.inMemoryUserSessions.get(userId);
+    if (sessionIds) {
+      for (const sid of sessionIds) {
+        this.inMemorySessions.delete(this.getSessionKey(userId, sid));
+      }
+      this.inMemoryUserSessions.delete(userId);
+    }
+    this.logger.log(`All in-memory sessions revoked for user ${userId}`);
   }
 
   async getUserSessions(userId: string): Promise<UserSessionData[]> {
-    try {
-      const sessionIds = await this.client.smembers(`aegis:user_sessions:${userId}`);
-      const sessions: UserSessionData[] = [];
-      for (const sid of sessionIds) {
-        const sess = await this.getSession(userId, sid);
-        if (sess) {
-          sessions.push(sess);
-        } else {
-          // Clean up orphaned session ID
-          await this.client.srem(`aegis:user_sessions:${userId}`, sid);
+    if (this.isConnected && this.client) {
+      try {
+        const sessionIds = await this.client.smembers(`aegis:user_sessions:${userId}`);
+        const sessions: UserSessionData[] = [];
+        for (const sid of sessionIds) {
+          const sess = await this.getSession(userId, sid);
+          if (sess) {
+            sessions.push(sess);
+          } else {
+            await this.client.srem(`aegis:user_sessions:${userId}`, sid);
+          }
         }
+        return sessions;
+      } catch {
+        this.isConnected = false;
       }
-      return sessions;
-    } catch (error) {
-      this.logger.error(`Error getting user sessions: ${error.message}`);
-      return [];
     }
+
+    // In-memory fallback
+    const sessionIds = this.inMemoryUserSessions.get(userId);
+    if (!sessionIds) return [];
+
+    const sessions: UserSessionData[] = [];
+    for (const sid of sessionIds) {
+      const sess = this.inMemorySessions.get(this.getSessionKey(userId, sid));
+      if (sess) {
+        sessions.push(sess);
+      }
+    }
+    return sessions;
   }
 }

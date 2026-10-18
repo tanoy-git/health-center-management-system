@@ -1,0 +1,100 @@
+# Aegis Enterprise HIS v2.0 - Production Docker Compose for VPS Deployment
+version: '3.8'
+
+services:
+  # ----------------------------------------------------
+  # 1. POSTGRESQL DATABASE
+  # ----------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: aegis-prod-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aegis_prod_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Database password must be provided in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-aegis_his_production}
+    volumes:
+      - postgres_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aegis_prod_user} -d ${POSTGRES_DB:-aegis_his_production}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aegis_internal_network
+
+  # ----------------------------------------------------
+  # 2. REDIS SESSION & QUEUE CACHE
+  # ----------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: aegis-prod-redis
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_prod_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - aegis_internal_network
+
+  # ----------------------------------------------------
+  # 3. NESTJS BACKEND API
+  # ----------------------------------------------------
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    container_name: aegis-prod-backend
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-aegis_prod_user}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-aegis_his_production}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      JWT_EXPIRATION: ${JWT_EXPIRATION:-1d}
+    ports:
+      - "127.0.0.1:4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - aegis_internal_network
+
+  # ----------------------------------------------------
+  # 4. NEXT.JS FRONTEND WEB APP
+  # ----------------------------------------------------
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+    container_name: aegis-prod-frontend
+    restart: always
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - aegis_internal_network
+
+networks:
+  aegis_internal_network:
+    driver: bridge
+
+volumes:
+  postgres_prod_data:
+    driver: local
+  redis_prod_data:
+    driver: local

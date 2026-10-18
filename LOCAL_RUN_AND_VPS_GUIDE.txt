@@ -1,0 +1,205 @@
+================================================================================
+   AEGIS ENTERPRISE HEALTH INFORMATION SYSTEM (HIS) v2.0
+   LOCAL DEVELOPMENT & VPS PRODUCTION DEPLOYMENT GUIDE
+================================================================================
+
+--------------------------------------------------------------------------------
+PART 1: RUNNING LOCALLY (DEVELOPMENT MODE WITH LIVE CHANGES)
+--------------------------------------------------------------------------------
+
+1. PREREQUISITES
+   - Node.js v20+ and npm installed
+   - Docker Desktop running (for local PostgreSQL database)
+
+2. START LOCAL DATABASE (POSTGRESQL ONLY)
+   In your root project directory:
+   > npm run docker:postgres
+
+   To verify it is running:
+   > docker ps
+   (You should see 'aegis-postgres' running healthy on port 5434)
+
+3. INITIALIZE / SEED DATABASE (Run once or after schema changes)
+   > npm run prisma:generate
+   > npm run prisma:push
+   > npm run prisma:seed
+
+4. START BACKEND (NestJS with live code reloading)
+   Open Terminal 1 (or run this in current terminal to load Node/npm):
+   > $env:PATH = "C:\Users\tanoy\AppData\Roaming\fnm\node-versions\v20.20.2\installation;" + $env:PATH
+   > npm run dev:backend
+   - Backend URL: http://localhost:3000/api/v1
+   - Watches apps/backend/src for code changes automatically.
+
+5. START FRONTEND (Next.js with Fast Refresh)
+   Open Terminal 2:
+   > npm run dev:frontend
+   - Frontend URL: http://localhost:3001
+   - Watches apps/frontend for UI changes automatically.
+
+6. FIRST-TIME INITIALIZATION & USER CREATION GOVERNANCE
+   - First-Time Fresh Setup:
+     If the database has zero users (e.g. freshly created production database),
+     the Login Page (http://localhost:3001/login) automatically displays the
+     "Initial System Setup" form allowing you to create the initial Super Admin
+     and set their password.
+   - User Protection Rule:
+     Once ANY user exists in the database, the "Create User" form & button
+     disappears permanently from the login page.
+   - Provisioning New Users:
+     All future doctors, cashiers, nurses, and staff can ONLY be provisioned
+     from within the system by the Super Admin via the Employee / HR / IAM module.
+
+7. DEMO LOGIN CREDENTIALS (When using seeded database)
+   - Super Admin:     admin@aegis.health       / Admin@123456
+   - Doctor (Metro):  dr.marcus@aegis.health   / Staff@123456
+   - Cashier (Metro): cashier.metro@aegis.health / Staff@123456
+   - Doctor (West):   dr.sarah@aegis.health    / Staff@123456
+
+8. STOPPING LOCAL SERVICES
+   - Stop Frontend/Backend: Press Ctrl + C in their respective terminal windows.
+   - Stop PostgreSQL Docker:
+     > npm run docker:down
+
+
+--------------------------------------------------------------------------------
+PART 2: CONFIGURATION & STEPS FOR DEPLOYING ON A VPS SERVER (Ubuntu/Debian)
+--------------------------------------------------------------------------------
+
+1. MINIMUM VPS SPECIFICATIONS
+   - OS: Ubuntu 22.04 LTS or Ubuntu 24.04 LTS (recommended)
+   - CPU: 2 vCPUs minimum
+   - RAM: 4 GB minimum (2 GB with 2GB swap space)
+   - Storage: 30 GB+ SSD
+
+2. DOMAIN & DNS SETUP (Point DNS before generating SSL)
+   - Point your root domain or subdomain to your VPS Public IP address:
+     * yourclinic.com       ->  A Record ->  [YOUR_VPS_IP]
+     * api.yourclinic.com   ->  A Record ->  [YOUR_VPS_IP] (Optional if using subpaths)
+
+3. INITIAL SERVER SETUP & SECURITY
+   SSH into your VPS:
+   > ssh root@YOUR_VPS_IP
+
+   Update packages:
+   > sudo apt update && sudo apt upgrade -y
+
+   Configure basic firewall (UFW):
+   > sudo ufw allow OpenSSH
+   > sudo ufw allow 80/tcp
+   > sudo ufw allow 443/tcp
+   > sudo ufw enable
+
+   Install Docker and Docker Compose plugin:
+   > sudo apt install -y ca-certificates curl gnupg
+   > sudo install -m 0755 -d /etc/apt/keyrings
+   > curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+   > sudo chmod a+r /etc/apt/keyrings/docker.gpg
+   > echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+   > sudo apt update
+   > sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+4. CLONE THE REPOSITORY ON YOUR VPS
+   > cd /var/www
+   > git clone <YOUR_GIT_REPO_URL> health-center
+   > cd health-center
+
+5. PRODUCTION ENVIRONMENT CONFIGURATION (.env)
+   Create your production environment file:
+   > nano .env
+
+   Provide strong production secrets (NEVER use defaults):
+   -----------------------------------------------------------------------------
+   # Database (Internal Docker network communication)
+   POSTGRES_USER=aegis_prod_user
+   POSTGRES_PASSWORD=GENERATE_STRONG_RANDOM_PASSWORD_HERE
+   POSTGRES_DB=aegis_his_production
+   DATABASE_URL=postgresql://aegis_prod_user:GENERATE_STRONG_RANDOM_PASSWORD_HERE@postgres:5432/aegis_his_production?schema=public
+
+   # Redis
+   REDIS_PASSWORD=GENERATE_ANOTHER_RANDOM_PASSWORD_HERE
+   REDIS_URL=redis://:GENERATE_ANOTHER_RANDOM_PASSWORD_HERE@redis:6379
+
+   # Authentication Secret
+   JWT_SECRET=GENERATE_A_64_CHARACTER_RANDOM_SECRET_KEY
+   JWT_EXPIRATION=1d
+
+   # Ports (Internal Docker containers)
+   BACKEND_PORT=4000
+   FRONTEND_PORT=3000
+
+   # Frontend Public API URL (Domain pointing to your backend or reverse proxy)
+   NEXT_PUBLIC_API_URL=https://yourclinic.com/api/v1
+   -----------------------------------------------------------------------------
+
+6. DEPLOY USING DOCKER COMPOSE ON VPS
+   Run all services (PostgreSQL, Redis, NestJS Backend, Next.js Frontend):
+   > docker compose -f docker-compose.prod.yml up -d --build
+
+   Apply database migrations and initial seed on first deployment:
+   > docker compose -f docker-compose.prod.yml exec backend npx prisma migrate deploy
+   > docker compose -f docker-compose.prod.yml exec backend npm run prisma:seed
+
+7. CONFIGURE NGINX REVERSE PROXY & FREE SSL (Certbot)
+   Install Nginx and Certbot on the host:
+   > sudo apt install -y nginx certbot python3-certbot-nginx
+
+   Create Nginx site configuration:
+   > sudo nano /etc/nginx/sites-available/aegis
+
+   Paste the configuration:
+   -----------------------------------------------------------------------------
+   server {
+       server_name yourclinic.com www.yourclinic.com;
+
+       # Frontend (Next.js)
+       location / {
+           proxy_pass http://127.0.0.1:3000;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_cache_bypass $http_upgrade;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+       }
+
+       # Backend API (NestJS)
+       location /api/ {
+           proxy_pass http://127.0.0.1:4000/api/;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_cache_bypass $http_upgrade;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+           client_max_body_size 50M;
+       }
+   }
+   -----------------------------------------------------------------------------
+
+   Enable the site and reload Nginx:
+   > sudo ln -s /etc/nginx/sites-available/aegis /etc/nginx/sites-enabled/
+   > sudo nginx -t
+   > sudo systemctl reload nginx
+
+   Obtain and install SSL certificate automatically:
+   > sudo certbot --nginx -d yourclinic.com -d www.yourclinic.com
+
+8. AUTOMATED DATABASE BACKUP SETUP (Cron Job)
+   Set up daily automated PostgreSQL backups:
+   > sudo crontab -e
+   Add this line (runs daily at 2:00 AM):
+   0 2 * * * docker compose -f /var/www/health-center/docker-compose.prod.yml exec -T postgres pg_dump -U aegis_prod_user aegis_his_production > /var/backups/aegis_$(date +\%F).sql
+
+9. FUTURE UPDATES / REDEPLOYMENT COMMAND
+   Whenever you push new code to Git:
+   > cd /var/www/health-center
+   > git pull origin main
+   > docker compose -f docker-compose.prod.yml up -d --build
+   > docker compose -f docker-compose.prod.yml exec backend npx prisma migrate deploy
+
+================================================================================

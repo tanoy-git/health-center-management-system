@@ -194,11 +194,10 @@ export default function PatientsPage() {
                       <tr
                         key={p.id}
                         onClick={() => handleSelectPatient(p.id)}
-                        className={`cursor-pointer transition-colors ${
-                          isSelected
-                            ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200'
-                            : 'hover:bg-muted/50'
-                        }`}
+                        className={`cursor-pointer transition-colors ${isSelected
+                          ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200'
+                          : 'hover:bg-muted/50'
+                          }`}
                       >
                         <td className="py-3 px-4 font-mono font-semibold text-blue-600 dark:text-blue-400">
                           {p.uhid}

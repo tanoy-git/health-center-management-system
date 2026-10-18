@@ -14,8 +14,8 @@ services:
     name: aegis-backend
     env: docker
     plan: free
-    dockerContext: ./apps/backend
-    dockerfilePath: ./apps/backend/Dockerfile
+    rootDir: apps/backend
+    dockerfilePath: Dockerfile
     envVars:
       # Automatically injects the Postgres connection string
       - key: DATABASE_URL
@@ -34,8 +34,8 @@ services:
     name: aegis-frontend
     env: docker
     plan: free
-    dockerContext: ./apps/frontend
-    dockerfilePath: ./apps/frontend/Dockerfile
+    rootDir: apps/frontend
+    dockerfilePath: Dockerfile
     envVars:
       - key: NEXT_PUBLIC_API_URL
         fromService:

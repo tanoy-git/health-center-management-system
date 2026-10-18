@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '@/lib/auth-context';
 import {
   KeyRound,
@@ -24,6 +25,7 @@ export default function ChangePasswordModal({
   onClose,
 }: ChangePasswordModalProps) {
   const { changePassword, user } = useAuth();
+  const [mounted, setMounted] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -37,7 +39,12 @@ export default function ChangePasswordModal({
   const [success, setSuccess] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  if (!isOpen) return null;
+  // Ensure portal only renders on client side to avoid SSR mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!isOpen || !mounted) return null;
 
   const handleClose = () => {
     if (submitting) return;
@@ -49,18 +56,37 @@ export default function ChangePasswordModal({
     onClose();
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent | React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     setError(null);
     setSuccess(false);
+
+    // 1. Validation checks with immediate visible error messages
+    if (!currentPassword || !currentPassword.trim()) {
+      setError('Please enter your current password.');
+      return;
+    }
+
+    if (!newPassword || !newPassword.trim()) {
+      setError('Please enter a new password.');
+      return;
+    }
 
     if (newPassword.length < 6) {
       setError('New password must be at least 6 characters long.');
       return;
     }
 
+    if (!confirmPassword || !confirmPassword.trim()) {
+      setError('Please confirm your new password.');
+      return;
+    }
+
     if (newPassword !== confirmPassword) {
-      setError('New passwords do not match. Please confirm carefully.');
+      setError('New passwords do not match. Please verify both fields.');
       return;
     }
 
@@ -78,17 +104,29 @@ export default function ChangePasswordModal({
       setConfirmPassword('');
       setTimeout(() => {
         handleClose();
-      }, 1600);
+      }, 1500);
     } catch (err: any) {
-      setError(err.message || 'Failed to change password. Please check your current password.');
+      setError(
+        err?.message ||
+          'Failed to change password. Please verify that your current password is correct.',
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
+  // Render directly into document.body so the modal is centered in the viewport
+  // and completely detached from the header containing block and blur filters.
+  return createPortal(
+    <div
+      onClick={handleClose}
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto animate-in fade-in duration-200"
+      style={{ margin: 0, top: 0, left: 0, right: 0, bottom: 0, width: '100vw', height: '100vh' }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200 my-auto"
+      >
         {/* Header */}
         <div className="flex items-start justify-between border-b border-border/60 pb-3">
           <div className="flex items-center gap-3">
@@ -100,11 +138,12 @@ export default function ChangePasswordModal({
                 Change Account Password
               </h3>
               <p className="text-[11px] text-muted-foreground">
-                Update password for {user?.email}
+                Update credentials for {user?.email}
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={handleClose}
             disabled={submitting}
             className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
@@ -117,7 +156,7 @@ export default function ChangePasswordModal({
         {success && (
           <div className="flex items-center gap-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3 text-xs text-emerald-600 dark:text-emerald-400">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
-            <span>Password updated successfully! Closing...</span>
+            <span>Password updated successfully! Closing dialog...</span>
           </div>
         )}
 
@@ -129,8 +168,8 @@ export default function ChangePasswordModal({
           </div>
         )}
 
-        {/* Password Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        {/* Password Form with noValidate to prevent silent browser blocking */}
+        <form noValidate onSubmit={handleSubmit} className="space-y-4">
           {/* Current Password */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-foreground">
@@ -140,7 +179,7 @@ export default function ChangePasswordModal({
               <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <input
                 type={showCurrent ? 'text' : 'password'}
-                required
+                autoComplete="current-password"
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 placeholder="Enter current password"
@@ -149,7 +188,8 @@ export default function ChangePasswordModal({
               <button
                 type="button"
                 onClick={() => setShowCurrent(!showCurrent)}
-                className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
+                className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground p-0.5"
+                title={showCurrent ? 'Hide password' : 'Show password'}
               >
                 {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -167,7 +207,7 @@ export default function ChangePasswordModal({
               <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <input
                 type={showNew ? 'text' : 'password'}
-                required
+                autoComplete="new-password"
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="Minimum 6 characters"
@@ -176,7 +216,8 @@ export default function ChangePasswordModal({
               <button
                 type="button"
                 onClick={() => setShowNew(!showNew)}
-                className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
+                className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground p-0.5"
+                title={showNew ? 'Hide password' : 'Show password'}
               >
                 {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -192,7 +233,7 @@ export default function ChangePasswordModal({
               <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
               <input
                 type={showConfirm ? 'text' : 'password'}
-                required
+                autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Re-enter new password"
@@ -201,13 +242,15 @@ export default function ChangePasswordModal({
               <button
                 type="button"
                 onClick={() => setShowConfirm(!showConfirm)}
-                className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
+                className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground p-0.5"
+                title={showConfirm ? 'Hide password' : 'Show password'}
               >
                 {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
           </div>
 
+          {/* Actions */}
           <div className="pt-2 flex items-center justify-end gap-2">
             <button
               type="button"
@@ -218,14 +261,15 @@ export default function ChangePasswordModal({
               Cancel
             </button>
             <button
-              type="submit"
+              type="button"
+              onClick={handleSubmit}
               disabled={submitting || success}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/25 transition-all disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white shadow-md shadow-blue-500/25 transition-all disabled:opacity-50 cursor-pointer"
             >
               {submitting ? (
                 <>
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span>Updating Password...</span>
+                  <span>Saving new password...</span>
                 </>
               ) : (
                 <>
@@ -237,6 +281,7 @@ export default function ChangePasswordModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -24,6 +24,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   // In-memory fallback for local development without Redis
   private readonly inMemorySessions = new Map<string, UserSessionData>();
   private readonly inMemoryUserSessions = new Map<string, Set<string>>();
+  private readonly invalidatedSessions = new Set<string>();
+  private readonly invalidatedUsers = new Set<string>();
 
   constructor(private configService: ConfigService) {}
 
@@ -149,8 +151,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    // In-memory fallback: active if present in memory
-    return this.inMemorySessions.has(key);
+    // In-memory fallback: active unless explicitly revoked / invalidated
+    if (this.invalidatedSessions.has(key) || this.invalidatedUsers.has(userId)) {
+      return false;
+    }
+    return true;
   }
 
   async touchSession(userId: string, sessionId: string): Promise<void> {
@@ -193,6 +198,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
 
     // In-memory fallback
+    this.invalidatedSessions.add(key);
     this.inMemorySessions.delete(key);
     this.inMemoryUserSessions.get(userId)?.delete(sessionId);
     this.logger.log(`In-memory session ${sessionId} invalidated for user ${userId}`);
@@ -215,9 +221,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
 
     // In-memory fallback
+    this.invalidatedUsers.add(userId);
     const sessionIds = this.inMemoryUserSessions.get(userId);
     if (sessionIds) {
       for (const sid of sessionIds) {
+        this.invalidatedSessions.add(this.getSessionKey(userId, sid));
         this.inMemorySessions.delete(this.getSessionKey(userId, sid));
       }
       this.inMemoryUserSessions.delete(userId);

@@ -1,6 +1,7 @@
 // Aegis Enterprise HIS v2.0 - Multi-Tenant Domain-Driven Database Schema
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {

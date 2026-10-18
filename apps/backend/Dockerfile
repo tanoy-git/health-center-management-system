@@ -1,6 +1,9 @@
 # Base node image
 FROM node:20-alpine AS builder
 
+# Install OpenSSL required by Prisma query engine on Alpine Linux
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 # Copy dependency specifications
@@ -25,6 +28,9 @@ RUN npm prune --production
 # Production Runner stage
 FROM node:20-alpine AS runner
 
+# Install OpenSSL in runtime container
+RUN apk add --no-cache openssl
+
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -38,5 +44,5 @@ COPY --from=builder /app/package*.json ./
 
 EXPOSE 4000
 
-# Start production server
-CMD ["node", "dist/src/main.js"]
+# Run database migrations and start production server
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main.js"]

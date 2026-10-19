@@ -74,6 +74,8 @@ model Permission {
   name        String
   module      String   // IAM, HR, PATIENTS, BILLING, CLINICAL, DIAGNOSTICS
   description String?
+  status      String   @default("ACTIVE") // ACTIVE, INACTIVE
+  is_active   Boolean  @default(true)
 
   // Audit & Soft Delete
   created_at  DateTime @default(now())

@@ -156,7 +156,7 @@ export default function DashboardPage() {
           </div>
           <div>
             <div className="text-2xl font-bold tracking-tight text-foreground">
-              ${stats.todayRevenue.toFixed(2)}
+              {stats.todayRevenue.toFixed(2)} tk
             </div>
             <p className="text-[11px] text-muted-foreground mt-0.5">
               {stats.invoicesCount} Invoices generated

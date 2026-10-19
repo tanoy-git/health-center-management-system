@@ -23,6 +23,10 @@ export class RbacService {
 
   async getPermissions() {
     return this.prisma.permission.findMany({
+      where: {
+        status: 'ACTIVE',
+        is_active: true,
+      },
       orderBy: [{ module: 'asc' }, { code: 'asc' }],
     });
   }
@@ -32,6 +36,12 @@ export class RbacService {
       orderBy: { created_at: 'asc' },
       include: {
         role_permissions: {
+          where: {
+            permission: {
+              status: 'ACTIVE',
+              is_active: true,
+            },
+          },
           include: {
             permission: true,
           },
@@ -50,6 +60,12 @@ export class RbacService {
       where: { id },
       include: {
         role_permissions: {
+          where: {
+            permission: {
+              status: 'ACTIVE',
+              is_active: true,
+            },
+          },
           include: {
             permission: true,
           },

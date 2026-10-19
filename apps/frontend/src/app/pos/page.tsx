@@ -215,11 +215,10 @@ export default function PosBillingPage() {
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`rounded-lg px-2.5 py-1.5 text-[10px] font-semibold whitespace-nowrap transition-colors ${
-                    selectedCategory === cat
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-                  }`}
+                  className={`rounded-lg px-2.5 py-1.5 text-[10px] font-semibold whitespace-nowrap transition-colors ${selectedCategory === cat
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                    }`}
                 >
                   {cat}
                 </button>
@@ -256,7 +255,7 @@ export default function PosBillingPage() {
 
                   <div className="flex items-center justify-between pt-3 mt-2 border-t border-border/60">
                     <span className="text-sm font-bold font-mono text-foreground">
-                      ${Number(srv.price).toFixed(2)}
+                      {Number(srv.price).toFixed(2)} tk
                     </span>
                     <button
                       type="button"
@@ -328,7 +327,7 @@ export default function PosBillingPage() {
                       {item.itemName}
                     </p>
                     <span className="text-[10px] text-muted-foreground">
-                      ${item.unitPrice.toFixed(2)} each
+                      {item.unitPrice.toFixed(2)} tk each
                     </span>
                   </div>
 
@@ -353,7 +352,7 @@ export default function PosBillingPage() {
                     </div>
 
                     <span className="font-mono font-bold text-foreground w-16 text-right">
-                      ${(item.unitPrice * item.quantity).toFixed(2)}
+                      {(item.unitPrice * item.quantity).toFixed(2)} tk
                     </span>
 
                     <button
@@ -404,11 +403,10 @@ export default function PosBillingPage() {
                       key={m}
                       type="button"
                       onClick={() => setPaymentMethod(m)}
-                      className={`rounded-lg py-1.5 text-[10px] font-bold transition-all ${
-                        paymentMethod === m
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'border border-border bg-background hover:bg-muted text-muted-foreground'
-                      }`}
+                      className={`rounded-lg py-1.5 text-[10px] font-bold transition-all ${paymentMethod === m
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'border border-border bg-background hover:bg-muted text-muted-foreground'
+                        }`}
                     >
                       {m}
                     </button>
@@ -420,18 +418,18 @@ export default function PosBillingPage() {
               <div className="rounded-xl bg-muted/40 p-3.5 space-y-1 text-xs">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal:</span>
-                  <span className="font-mono font-medium">${subtotal.toFixed(2)}</span>
+                  <span className="font-mono font-medium">{subtotal.toFixed(2)} tk</span>
                 </div>
                 {discountAmount > 0 && (
                   <div className="flex justify-between text-emerald-600 font-medium">
                     <span>Discount ({discountPercent}%):</span>
-                    <span className="font-mono">-${discountAmount.toFixed(2)}</span>
+                    <span className="font-mono">-{discountAmount.toFixed(2)} tk</span>
                   </div>
                 )}
                 <div className="flex justify-between border-t border-border/80 pt-1 text-base font-bold text-foreground">
                   <span>Total Due:</span>
                   <span className="font-mono text-blue-600 dark:text-blue-400">
-                    ${totalAmount.toFixed(2)}
+                    {totalAmount.toFixed(2)} tk
                   </span>
                 </div>
               </div>
@@ -447,7 +445,7 @@ export default function PosBillingPage() {
                 <span>
                   {submitting
                     ? 'Processing Invoice...'
-                    : `Complete Checkout ($${totalAmount.toFixed(2)})`}
+                    : `Complete Checkout (${totalAmount.toFixed(2)} tk)`}
                 </span>
               </button>
             </div>

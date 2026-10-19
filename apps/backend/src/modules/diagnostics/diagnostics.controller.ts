@@ -26,6 +26,24 @@ import {
 export class DiagnosticsController {
   constructor(private readonly diagnosticsService: DiagnosticsService) {}
 
+  @Get('queue')
+  @RequirePermissions('diagnostics:reports:read')
+  async getDiagnosticsQueue(
+    @CurrentTenant() centerId: string,
+    @Query('testType') testType?: string,
+  ) {
+    return this.diagnosticsService.getDiagnosticsQueue(centerId, testType);
+  }
+
+  @Post('queue/:itemId/complete')
+  @RequirePermissions('diagnostics:reports:write')
+  async completeQueueItem(
+    @Param('itemId') itemId: string,
+    @CurrentTenant() centerId: string,
+  ) {
+    return this.diagnosticsService.completeQueueItem(itemId, centerId);
+  }
+
   @Get('reports')
   @RequirePermissions('diagnostics:reports:read')
   async getReports(

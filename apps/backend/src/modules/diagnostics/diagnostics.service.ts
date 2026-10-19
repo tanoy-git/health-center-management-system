@@ -12,6 +12,7 @@ export interface CreateDiagnosticReportDto {
   findings: string; // Rich-text formatted HTML / Markdown
   impression?: string;
   attachments?: string[]; // Array of uploaded URLs from MinIO/S3
+  invoiceItemId?: string; // queue item linkage
 }
 
 export interface SignOffReportDto {
@@ -30,6 +31,128 @@ export class DiagnosticsService {
     const count = await this.prisma.diagnosticReport.count();
     const seq = String(count + 1).padStart(5, '0');
     return `DIAG-${year}-${month}-${seq}`;
+  }
+
+  // ---------------------------------------------
+  // DIAGNOSTICS PATIENT QUEUE (USG, LAB, XRAY, ECG)
+  // ---------------------------------------------
+  async getDiagnosticsQueue(centerId: string, testType?: string) {
+    const where: any = {
+      center_id: centerId,
+      is_queued: true,
+      invoice: {
+        deleted_at: null,
+      },
+    };
+
+    const typeUpper = (testType || '').toUpperCase().trim();
+
+    if (typeUpper === 'USG') {
+      where.OR = [
+        { category: { equals: 'USG', mode: 'insensitive' } },
+        { item_name: { contains: 'USG', mode: 'insensitive' } },
+        { item_name: { contains: 'Ultrasound', mode: 'insensitive' } },
+      ];
+    } else if (typeUpper === 'LAB' || typeUpper === 'LAB_TEST') {
+      where.OR = [
+        { category: { equals: 'LAB_TEST', mode: 'insensitive' } },
+        { category: { equals: 'LAB', mode: 'insensitive' } },
+        { item_name: { contains: 'Blood', mode: 'insensitive' } },
+        { item_name: { contains: 'Panel', mode: 'insensitive' } },
+        { item_name: { contains: 'Test', mode: 'insensitive' } },
+        { item_name: { contains: 'CBC', mode: 'insensitive' } },
+        { item_name: { contains: 'Lipid', mode: 'insensitive' } },
+        { item_name: { contains: 'HbA1c', mode: 'insensitive' } },
+      ];
+    } else if (typeUpper === 'XRAY' || typeUpper === 'RADIOLOGY') {
+      where.OR = [
+        { category: { equals: 'RADIOLOGY', mode: 'insensitive' } },
+        { category: { equals: 'XRAY', mode: 'insensitive' } },
+        { item_name: { contains: 'X-Ray', mode: 'insensitive' } },
+        { item_name: { contains: 'XRay', mode: 'insensitive' } },
+      ];
+    } else if (typeUpper === 'ECG') {
+      where.OR = [
+        { category: { equals: 'ECG', mode: 'insensitive' } },
+        { item_name: { contains: 'ECG', mode: 'insensitive' } },
+        { item_name: { contains: 'Electrocardiogram', mode: 'insensitive' } },
+      ];
+    } else if (!typeUpper || typeUpper === 'ALL') {
+      // Return all diagnostic categories
+      where.OR = [
+        { category: { in: ['USG', 'LAB_TEST', 'LAB', 'RADIOLOGY', 'XRAY', 'ECG'] } },
+        { item_name: { contains: 'USG', mode: 'insensitive' } },
+        { item_name: { contains: 'Ultrasound', mode: 'insensitive' } },
+        { item_name: { contains: 'X-Ray', mode: 'insensitive' } },
+        { item_name: { contains: 'XRay', mode: 'insensitive' } },
+        { item_name: { contains: 'ECG', mode: 'insensitive' } },
+        { item_name: { contains: 'Electrocardiogram', mode: 'insensitive' } },
+        { item_name: { contains: 'Blood', mode: 'insensitive' } },
+        { item_name: { contains: 'CBC', mode: 'insensitive' } },
+        { item_name: { contains: 'Lipid', mode: 'insensitive' } },
+        { item_name: { contains: 'HbA1c', mode: 'insensitive' } },
+      ];
+    }
+
+    return this.prisma.invoiceItem.findMany({
+      where,
+      orderBy: { created_at: 'asc' },
+      include: {
+        invoice: {
+          select: {
+            id: true,
+            invoice_number: true,
+            created_at: true,
+            payment_status: true,
+            paid_amount: true,
+            patient: {
+              select: {
+                id: true,
+                uhid: true,
+                first_name: true,
+                last_name: true,
+                gender: true,
+                blood_group: true,
+                phone: true,
+                dob: true,
+                referred_by: {
+                  include: {
+                    user: {
+                      select: {
+                        first_name: true,
+                        last_name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        service: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            category: true,
+            price: true,
+          },
+        },
+      },
+    });
+  }
+
+  async completeQueueItem(itemId: string, centerId: string) {
+    const item = await this.prisma.invoiceItem.findFirst({
+      where: { id: itemId, center_id: centerId },
+    });
+    if (!item) {
+      throw new NotFoundException('Queue item not found or does not belong to this center');
+    }
+    return this.prisma.invoiceItem.update({
+      where: { id: itemId },
+      data: { is_queued: false },
+    });
   }
 
   async getReports(centerId: string, testType?: string, status?: string) {
@@ -86,7 +209,7 @@ export class DiagnosticsService {
 
     const reportNumber = await this.generateReportNumber(centerId);
 
-    return this.prisma.diagnosticReport.create({
+    const report = await this.prisma.diagnosticReport.create({
       data: {
         center_id: centerId,
         report_number: reportNumber,
@@ -104,6 +227,32 @@ export class DiagnosticsService {
         patient: true,
       },
     });
+
+    // Mark invoice item as out of queue (is_queued: false)
+    if (dto.invoiceItemId) {
+      await this.prisma.invoiceItem.updateMany({
+        where: { id: dto.invoiceItemId, center_id: centerId },
+        data: { is_queued: false },
+      });
+    } else {
+      // Find oldest active queue item for this patient matching this test type or category
+      const oldestQueue = await this.prisma.invoiceItem.findFirst({
+        where: {
+          center_id: centerId,
+          is_queued: true,
+          invoice: { patient_id: dto.patientId, deleted_at: null },
+        },
+        orderBy: { created_at: 'asc' },
+      });
+      if (oldestQueue) {
+        await this.prisma.invoiceItem.update({
+          where: { id: oldestQueue.id },
+          data: { is_queued: false },
+        });
+      }
+    }
+
+    return report;
   }
 
   async signOffReport(

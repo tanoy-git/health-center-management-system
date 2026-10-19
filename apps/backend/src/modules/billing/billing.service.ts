@@ -136,6 +136,7 @@ export class BillingService {
         unit_price: new Prisma.Decimal(item.unitPrice),
         quantity: item.quantity,
         total_price: new Prisma.Decimal(lineTotal),
+        is_queued: true,
       };
     });
 

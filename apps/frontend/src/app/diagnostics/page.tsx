@@ -14,6 +14,12 @@ import {
   ShieldCheck,
   X,
   FileImage,
+  ListOrdered,
+  RotateCcw,
+  Sparkles,
+  Check,
+  User,
+  Users,
 } from 'lucide-react';
 
 export default function DiagnosticsPage() {
@@ -22,6 +28,17 @@ export default function DiagnosticsPage() {
   const [patients, setPatients] = useState<any[]>([]);
   const [testTypeFilter, setTestTypeFilter] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // Diagnostics Patient Queue State
+  const [queueItems, setQueueItems] = useState<any[]>([]);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [selectedQueueTab, setSelectedQueueTab] = useState<
+    'ALL' | 'USG' | 'LAB' | 'XRAY' | 'ECG'
+  >('ALL');
+  const [selectedInvoiceItemId, setSelectedInvoiceItemId] = useState<
+    string | null
+  >(null);
+  const [activeQueueItem, setActiveQueueItem] = useState<any | null>(null);
 
   // New Report Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -39,9 +56,93 @@ export default function DiagnosticsPage() {
   const [targetReport, setTargetReport] = useState<any | null>(null);
   const [signatureText, setSignatureText] = useState('');
 
+  // Helper to determine modality from queue item
+  const resolveQueueItemModality = (
+    item: any
+  ): 'USG' | 'LAB' | 'XRAY' | 'ECG' => {
+    const cat = (item.category || '').toUpperCase();
+    const name = (item.item_name || '').toUpperCase();
+
+    if (
+      cat === 'USG' ||
+      name.includes('USG') ||
+      name.includes('ULTRASOUND')
+    ) {
+      return 'USG';
+    }
+    if (
+      cat === 'LAB_TEST' ||
+      cat === 'LAB' ||
+      name.includes('BLOOD') ||
+      name.includes('TEST') ||
+      name.includes('PANEL') ||
+      name.includes('CBC') ||
+      name.includes('LIPID') ||
+      name.includes('HBA1C')
+    ) {
+      return 'LAB';
+    }
+    if (
+      cat === 'RADIOLOGY' ||
+      cat === 'XRAY' ||
+      name.includes('X-RAY') ||
+      name.includes('XRAY')
+    ) {
+      return 'XRAY';
+    }
+    if (
+      cat === 'ECG' ||
+      name.includes('ECG') ||
+      name.includes('ELECTROCARDIOGRAM')
+    ) {
+      return 'ECG';
+    }
+    return 'USG';
+  };
+
   useEffect(() => {
     loadReports();
+    loadQueue();
   }, [activeCenter, testTypeFilter]);
+
+  const loadQueue = async () => {
+    setQueueLoading(true);
+    try {
+      const data = await apiRequest('/diagnostics/queue');
+      setQueueItems(data || []);
+    } catch (e) {
+      console.error('Error loading diagnostics queue:', e);
+    } finally {
+      setQueueLoading(false);
+    }
+  };
+
+  const handleAttendQueueItem = (item: any) => {
+    setSelectedInvoiceItemId(item.id);
+    setActiveQueueItem(item);
+    if (item.invoice?.patient?.id) {
+      setSelectedPatientId(item.invoice.patient.id);
+    }
+    const modality = resolveQueueItemModality(item);
+    setTestType(modality);
+    setTestName(item.item_name || `${modality} Examination`);
+    setFindings(
+      `Patient presented for ${item.item_name}. Clinical evaluation and findings recorded below:\n\n`
+    );
+    setImpression('');
+    setIsModalOpen(true);
+  };
+
+  const handleCompleteQueueItem = async (itemId: string) => {
+    try {
+      await apiRequest(`/diagnostics/queue/${itemId}/complete`, {
+        method: 'POST',
+      });
+      loadQueue();
+    } catch (err: any) {
+      alert(err.message || 'Failed to complete queue item');
+    }
+  };
 
   const loadReports = async () => {
     setLoading(true);
@@ -98,14 +199,18 @@ export default function DiagnosticsPage() {
           findings,
           impression,
           attachments: uploadedUrls,
+          invoiceItemId: selectedInvoiceItemId || undefined,
         }),
       });
 
       setIsModalOpen(false);
+      setSelectedInvoiceItemId(null);
+      setActiveQueueItem(null);
       setFindings('');
       setImpression('');
       setUploadedUrls([]);
       loadReports();
+      loadQueue();
     } catch (err: any) {
       alert(err.message || 'Failed to create report');
     } finally {
@@ -158,6 +263,208 @@ export default function DiagnosticsPage() {
             <span>New Lab / USG Report</span>
           </button>
         )}
+      </div>
+
+      {/* Patient Diagnostics Queue Section */}
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden space-y-4 p-4 sm:p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-600/10 text-purple-600 dark:text-purple-400">
+              <ListOrdered className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-foreground">
+                  Patient Diagnostics Queue
+                </h2>
+                <span className="rounded-full bg-purple-100 dark:bg-purple-900/40 px-2 py-0.5 text-[10px] font-bold text-purple-700 dark:text-purple-300">
+                  {queueItems.length} Waiting
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Invoiced diagnostic orders waiting for USG, Lab Pathology, X-Ray, and ECG
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={loadQueue}
+            disabled={queueLoading}
+            className="self-start sm:self-auto flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1.5 hover:bg-muted transition-colors disabled:opacity-50"
+            title="Refresh queue"
+          >
+            <RotateCcw
+              className={`h-3 w-3 ${queueLoading ? 'animate-spin' : ''}`}
+            />
+            <span>Refresh Queue</span>
+          </button>
+        </div>
+
+        {/* Modality Tabs */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          {(['ALL', 'USG', 'LAB', 'XRAY', 'ECG'] as const).map((tab) => {
+            const count =
+              tab === 'ALL'
+                ? queueItems.length
+                : queueItems.filter(
+                    (q) => resolveQueueItemModality(q) === tab
+                  ).length;
+            const isSelected = selectedQueueTab === tab;
+
+            return (
+              <button
+                key={tab}
+                onClick={() => setSelectedQueueTab(tab)}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all ${
+                  isSelected
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'border border-border bg-background hover:bg-muted text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                <span>{tab === 'ALL' ? 'All Waiting' : tab}</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.2 text-[9px] font-bold ${
+                    isSelected
+                      ? 'bg-white/20 text-white'
+                      : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Queue Items List */}
+        {(() => {
+          const filteredQueue = queueItems.filter((item) => {
+            if (selectedQueueTab === 'ALL') return true;
+            return resolveQueueItemModality(item) === selectedQueueTab;
+          });
+
+          if (queueLoading) {
+            return (
+              <div className="py-8 text-center text-xs text-muted-foreground">
+                Loading diagnostics queue...
+              </div>
+            );
+          }
+
+          if (filteredQueue.length === 0) {
+            return (
+              <div className="py-8 text-center space-y-1 text-xs text-muted-foreground border border-dashed border-border rounded-xl">
+                <Clock className="h-6 w-6 mx-auto opacity-30 text-muted-foreground" />
+                <p className="font-semibold text-foreground">Queue is Empty</p>
+                <p className="text-[11px]">
+                  No patients waiting in {selectedQueueTab === 'ALL' ? 'diagnostics' : selectedQueueTab} queue.
+                </p>
+              </div>
+            );
+          }
+
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {filteredQueue.map((item, index) => {
+                const pt = item.invoice?.patient;
+                const modality = resolveQueueItemModality(item);
+
+                const badgeColor =
+                  modality === 'USG'
+                    ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                    : modality === 'LAB'
+                    ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                    : modality === 'XRAY'
+                    ? 'bg-cyan-100 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800'
+                    : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800';
+
+                return (
+                  <div
+                    key={item.id}
+                    className="relative rounded-xl border border-border bg-card p-4 shadow-sm hover:border-purple-300 dark:hover:border-purple-700 transition-all flex flex-col justify-between space-y-3"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-1 font-mono text-[10px] font-bold text-muted-foreground">
+                          <span className="rounded bg-muted px-1.5 py-0.5">
+                            #{index + 1}
+                          </span>
+                          <span className="text-purple-600 dark:text-purple-400">
+                            {pt?.uhid}
+                          </span>
+                        </span>
+                        <span
+                          className={`rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider ${badgeColor}`}
+                        >
+                          {modality}
+                        </span>
+                      </div>
+
+                      <div>
+                        <h4 className="text-sm font-bold text-foreground">
+                          {pt?.first_name} {pt?.last_name}
+                        </h4>
+                        <p className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5">
+                          <span>{pt?.gender || 'N/A'}</span>
+                          {pt?.blood_group && (
+                            <>
+                              <span>•</span>
+                              <span className="font-semibold text-rose-600 dark:text-rose-400">
+                                {pt.blood_group}
+                              </span>
+                            </>
+                          )}
+                          <span>•</span>
+                          <span>{pt?.phone}</span>
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg bg-muted/40 p-2.5 text-[11px] space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-foreground">
+                            {item.item_name}
+                          </span>
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            Qty: {item.quantity}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/50">
+                          <span>Inv: {item.invoice?.invoice_number}</span>
+                          <span>
+                            {new Date(item.created_at).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      {hasPermission('diagnostics:reports:write') && (
+                        <button
+                          onClick={() => handleAttendQueueItem(item)}
+                          className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors"
+                        >
+                          <Sparkles className="h-3.5 w-3.5" />
+                          <span>Perform Test</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleCompleteQueueItem(item.id)}
+                        className="flex items-center justify-center gap-1 rounded-lg border border-border hover:bg-muted px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                        title="Mark Done without report"
+                      >
+                        <Check className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">Done</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Filter Tabs */}
@@ -294,6 +601,33 @@ export default function DiagnosticsPage() {
             </div>
 
             <form onSubmit={handleCreateReport} className="space-y-4 text-xs">
+              {activeQueueItem && (
+                <div className="flex items-center justify-between rounded-lg bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/50 p-2.5 text-xs text-purple-900 dark:text-purple-200">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400 shrink-0" />
+                    <div>
+                      <span className="font-semibold">Linked Order:</span>{' '}
+                      <span className="font-bold">
+                        {activeQueueItem.item_name}
+                      </span>{' '}
+                      <span className="font-mono text-[11px] opacity-80">
+                        ({activeQueueItem.invoice?.invoice_number})
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedInvoiceItemId(null);
+                      setActiveQueueItem(null);
+                    }}
+                    className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline font-semibold"
+                  >
+                    Unlink
+                  </button>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="font-semibold text-foreground">

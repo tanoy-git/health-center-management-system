@@ -27,6 +27,7 @@ export interface PrescriptionMedicineItemDto {
 
 export interface CreatePrescriptionDto {
   patientId: string;
+  invoiceItemId?: string;
   clinicalNotes?: string;
   diagnosis?: string;
   vitals?: {
@@ -154,7 +155,115 @@ export class ClinicalService {
       },
     });
 
+    // Mark invoice item out of queue
+    if (dto.invoiceItemId) {
+      await this.prisma.invoiceItem.updateMany({
+        where: { id: dto.invoiceItemId, center_id: centerId },
+        data: { is_queued: false },
+      });
+    } else {
+      // Auto-complete the oldest queued item for this patient at this center if any
+      const oldestQueued = await this.prisma.invoiceItem.findFirst({
+        where: {
+          center_id: centerId,
+          is_queued: true,
+          invoice: { patient_id: dto.patientId },
+        },
+        orderBy: { created_at: 'asc' },
+      });
+      if (oldestQueued) {
+        await this.prisma.invoiceItem.update({
+          where: { id: oldestQueued.id },
+          data: { is_queued: false },
+        });
+      }
+    }
+
     return prescription;
+  }
+
+  // ---------------------------------------------
+  // PATIENT QUEUE ENGINE
+  // ---------------------------------------------
+  async getPatientQueue(centerId: string, category?: string) {
+    const where: any = {
+      center_id: centerId,
+      is_queued: true,
+      invoice: {
+        deleted_at: null,
+      },
+    };
+
+    if (category && category !== 'ALL') {
+      where.category = { equals: category, mode: 'insensitive' };
+    } else if (!category || category === 'CONSULTATION') {
+      where.OR = [
+        { category: { equals: 'CONSULTATION', mode: 'insensitive' } },
+        { category: { equals: 'GENERAL_PRESCRIPTION', mode: 'insensitive' } },
+        { item_name: { contains: 'Consultation', mode: 'insensitive' } },
+        { item_name: { contains: 'Prescription', mode: 'insensitive' } },
+      ];
+    }
+
+    return this.prisma.invoiceItem.findMany({
+      where,
+      orderBy: { created_at: 'asc' },
+      include: {
+        invoice: {
+          select: {
+            id: true,
+            invoice_number: true,
+            created_at: true,
+            payment_status: true,
+            paid_amount: true,
+            patient: {
+              select: {
+                id: true,
+                uhid: true,
+                first_name: true,
+                last_name: true,
+                gender: true,
+                blood_group: true,
+                phone: true,
+                dob: true,
+                referred_by: {
+                  include: {
+                    user: {
+                      select: {
+                        first_name: true,
+                        last_name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        service: {
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            category: true,
+            price: true,
+          },
+        },
+      },
+    });
+  }
+
+  async completeQueueItem(itemId: string, centerId: string) {
+    const item = await this.prisma.invoiceItem.findFirst({
+      where: { id: itemId, center_id: centerId },
+    });
+    if (!item) {
+      throw new NotFoundException('Queue item not found or does not belong to this center');
+    }
+    return this.prisma.invoiceItem.update({
+      where: { id: itemId },
+      data: { is_queued: false },
+    });
   }
 
   async getPrescriptions(centerId: string, patientId?: string) {

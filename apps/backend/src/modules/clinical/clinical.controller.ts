@@ -46,6 +46,24 @@ export class ClinicalController {
     return this.clinicalService.createMedicine(centerId, body, userId);
   }
 
+  @Get('queue')
+  @RequirePermissions('clinical:prescription:read')
+  async getPatientQueue(
+    @CurrentTenant() centerId: string,
+    @Query('category') category?: string,
+  ) {
+    return this.clinicalService.getPatientQueue(centerId, category);
+  }
+
+  @Post('queue/:itemId/complete')
+  @RequirePermissions('clinical:prescription:write')
+  async completeQueueItem(
+    @Param('itemId') itemId: string,
+    @CurrentTenant() centerId: string,
+  ) {
+    return this.clinicalService.completeQueueItem(itemId, centerId);
+  }
+
   @Post('prescriptions')
   @RequirePermissions('clinical:prescription:write')
   async createPrescription(

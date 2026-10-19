@@ -15,6 +15,12 @@ import {
   CheckCircle,
   X,
   FileText,
+  Clock,
+  ListOrdered,
+  Users,
+  Check,
+  RotateCcw,
+  Sparkles,
 } from 'lucide-react';
 
 interface MedicineRow {
@@ -32,6 +38,13 @@ export default function PrescriptionsPage() {
   const [medicines, setMedicines] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+
+  // Patient Queue State
+  const [queueItems, setQueueItems] = useState<any[]>([]);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [selectedQueueCategory, setSelectedQueueCategory] = useState<string>('ALL');
+  const [selectedInvoiceItemId, setSelectedInvoiceItemId] = useState<string | null>(null);
+  const [activeQueueItem, setActiveQueueItem] = useState<any | null>(null);
 
   // New Prescription Modal State
   const [isNewRxModalOpen, setIsNewRxModalOpen] = useState(false);
@@ -59,7 +72,20 @@ export default function PrescriptionsPage() {
 
   useEffect(() => {
     loadData();
+    loadQueue();
   }, [activeCenter]);
+
+  const loadQueue = async () => {
+    setQueueLoading(true);
+    try {
+      const q = await apiRequest('/clinical/queue?category=CONSULTATION');
+      setQueueItems(q || []);
+    } catch (e) {
+      console.error('Error loading patient queue:', e);
+    } finally {
+      setQueueLoading(false);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -146,6 +172,29 @@ export default function PrescriptionsPage() {
     }
   };
 
+  const handleAttendQueue = (item: any) => {
+    setActiveQueueItem(item);
+    setSelectedInvoiceItemId(item.id);
+    if (item.invoice?.patient?.id) {
+      setSelectedPatientId(item.invoice.patient.id);
+    }
+    setDiagnosis(`Service Investigation: ${item.item_name} (${item.category})`);
+    setClinicalNotes(
+      `Billed under Invoice #${item.invoice?.invoice_number}. Awaiting clinical report/prescription.`
+    );
+    setIsNewRxModalOpen(true);
+  };
+
+  const handleCompleteQueueItem = async (itemId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await apiRequest(`/clinical/queue/${itemId}/complete`, { method: 'POST' });
+      loadQueue();
+    } catch (err: any) {
+      alert(err.message || 'Error updating queue item');
+    }
+  };
+
   const handleCreatePrescription = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPatientId) {
@@ -158,6 +207,7 @@ export default function PrescriptionsPage() {
         method: 'POST',
         body: JSON.stringify({
           patientId: selectedPatientId,
+          invoiceItemId: selectedInvoiceItemId || undefined,
           diagnosis,
           clinicalNotes,
           vitals,
@@ -167,7 +217,10 @@ export default function PrescriptionsPage() {
       });
 
       setIsNewRxModalOpen(false);
+      setSelectedInvoiceItemId(null);
+      setActiveQueueItem(null);
       loadData();
+      loadQueue();
 
       // Automatically trigger PDF download
       handleDownloadPdf(newRx.id, newRx.prescription_number);
@@ -201,13 +254,171 @@ export default function PrescriptionsPage() {
 
         {hasPermission('clinical:prescription:write') && (
           <button
-            onClick={() => setIsNewRxModalOpen(true)}
+            onClick={() => {
+              setSelectedInvoiceItemId(null);
+              setActiveQueueItem(null);
+              setDiagnosis('');
+              setClinicalNotes('');
+              setIsNewRxModalOpen(true);
+            }}
             className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-blue-500/25 transition-colors"
           >
             <Plus className="h-4 w-4" />
             <span>Write New Prescription</span>
           </button>
         )}
+      </div>
+
+      {/* Patient Queue Section */}
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden space-y-4 p-4 sm:p-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600/10 text-blue-600 dark:text-blue-400">
+              <ListOrdered className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-foreground">
+                  Patient Consultation Queue
+                </h2>
+                <span className="rounded-full bg-blue-100 dark:bg-blue-900/40 px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:text-blue-300">
+                  {queueItems.length} Waiting
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Billed patients waiting for doctor consultation & prescription
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={loadQueue}
+            disabled={queueLoading}
+            className="self-start sm:self-auto flex items-center gap-1 text-[11px] font-medium text-muted-foreground hover:text-foreground border border-border rounded-lg px-2.5 py-1.5 hover:bg-muted transition-colors disabled:opacity-50"
+            title="Refresh queue"
+          >
+            <RotateCcw
+              className={`h-3 w-3 ${queueLoading ? 'animate-spin' : ''}`}
+            />
+            <span>Refresh</span>
+          </button>
+        </div>
+
+        {/* Queue Items List */}
+        {(() => {
+          const filteredItems = queueItems;
+
+          if (queueLoading) {
+            return (
+              <div className="py-10 text-center text-xs text-muted-foreground">
+                Loading queue...
+              </div>
+            );
+          }
+
+          if (filteredItems.length === 0) {
+            return (
+              <div className="py-10 text-center space-y-1 text-xs text-muted-foreground border border-dashed border-border rounded-xl">
+                <Clock className="h-6 w-6 mx-auto opacity-30 text-muted-foreground" />
+                <p className="font-semibold text-foreground">Queue is Empty</p>
+                <p className="text-[11px]">
+                  No patients waiting in {selectedQueueCategory.replace('_', ' ')} queue.
+                </p>
+              </div>
+            );
+          }
+
+          return (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {filteredItems.map((item, index) => {
+                const pt = item.invoice?.patient;
+                const isUsg = item.category?.toUpperCase() === 'USG';
+                const isLab = item.category?.toUpperCase() === 'LAB_TEST';
+                const isProc = item.category?.toUpperCase() === 'PROCEDURE';
+
+                const badgeColor = isUsg
+                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
+                  : isLab
+                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'
+                  : isProc
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                  : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
+
+                return (
+                  <div
+                    key={item.id}
+                    className="flex flex-col justify-between rounded-xl border border-border bg-background p-3.5 space-y-3 hover:border-blue-500/50 hover:shadow-sm transition-all"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">
+                            #{index + 1}
+                          </span>
+                          <span className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">
+                            {pt?.uhid || 'NO-UHID'}
+                          </span>
+                        </div>
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${badgeColor}`}
+                        >
+                          {item.category}
+                        </span>
+                      </div>
+
+                      <div>
+                        <h3 className="text-xs font-bold text-foreground truncate">
+                          {pt ? `${pt.first_name} ${pt.last_name}` : 'Unknown Patient'}
+                        </h3>
+                        <p className="text-[10px] text-muted-foreground">
+                          {pt?.phone || 'No phone'} {pt?.gender ? `• ${pt.gender}` : ''}
+                        </p>
+                      </div>
+
+                      <div className="p-2 rounded-lg bg-muted/40 text-[11px] space-y-0.5">
+                        <p className="font-semibold text-foreground truncate">
+                          {item.item_name}
+                        </p>
+                        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+                          <span>Inv: {item.invoice?.invoice_number}</span>
+                          <span>
+                            {item.created_at
+                              ? new Date(item.created_at).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : ''}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-2 border-t border-border/60">
+                      <button
+                        type="button"
+                        onClick={() => handleAttendQueue(item)}
+                        className="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 py-1.5 text-[11px] font-bold text-white shadow-sm transition-colors"
+                      >
+                        <Stethoscope className="h-3 w-3" />
+                        <span>Prescribe / Attend</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => handleCompleteQueueItem(item.id, e)}
+                        className="flex items-center justify-center gap-1 rounded-lg border border-border hover:bg-muted py-1.5 px-2 text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
+                        title="Mark as done (out of queue)"
+                      >
+                        <Check className="h-3.5 w-3.5 text-emerald-600" />
+                        <span className="hidden sm:inline">Done</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Prescriptions List */}
@@ -314,6 +525,26 @@ export default function PrescriptionsPage() {
             </div>
 
             <form onSubmit={handleCreatePrescription} className="space-y-4 text-xs">
+              {/* Linked Queue Item Banner */}
+              {activeQueueItem && (
+                <div className="rounded-xl bg-blue-500/10 border border-blue-500/20 p-3 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="rounded bg-blue-600 text-white font-mono text-[10px] font-bold px-2 py-0.5 uppercase">
+                      {activeQueueItem.category} Queue
+                    </span>
+                    <span className="font-semibold text-foreground">
+                      {activeQueueItem.item_name}
+                    </span>
+                    <span className="text-muted-foreground font-mono text-[11px]">
+                      (Invoice: {activeQueueItem.invoice?.invoice_number})
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                    Will auto-complete queue on submit
+                  </span>
+                </div>
+              )}
+
               {/* Patient Selector */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">

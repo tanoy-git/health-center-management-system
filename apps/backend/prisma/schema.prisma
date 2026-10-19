@@ -318,6 +318,7 @@ model InvoiceItem {
   unit_price  Decimal  @db.Decimal(10, 2)
   quantity    Int      @default(1)
   total_price Decimal  @db.Decimal(10, 2)
+  is_queued   Boolean  @default(true) // Patient Queue flag: true = in queue, false = completed/out
 
   // Audit & Soft Delete
   created_at  DateTime @default(now())

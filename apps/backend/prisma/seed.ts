@@ -134,6 +134,16 @@ async function main() {
     },
   });
 
+  const marketingOfficerRole = await prisma.role.upsert({
+    where: { name: 'MARKETING_OFFICER' },
+    update: {},
+    create: {
+      name: 'MARKETING_OFFICER',
+      description: 'Marketing officer who refers and brings patients to the center',
+      is_system: false,
+    },
+  });
+
   // Assign All Permissions to Super Admin
   for (const perm of dbPermissions) {
     await prisma.rolePermission.upsert({

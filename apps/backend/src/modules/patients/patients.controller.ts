@@ -36,6 +36,12 @@ export class PatientsController {
     return this.patientsService.getPatients(centerId, search);
   }
 
+  @Get('marketing-officers')
+  @RequirePermissions('patients:read')
+  async getMarketingOfficers(@CurrentTenant() centerId: string) {
+    return this.patientsService.getMarketingOfficers(centerId);
+  }
+
   @Get(':id')
   @RequirePermissions('patients:read')
   async getPatientById(

@@ -15,6 +15,7 @@ export interface CreatePatientDto {
   email?: string;
   address?: string;
   emergencyContact?: string;
+  referredById?: string;
 }
 
 export interface UpdatePatientDto {
@@ -27,6 +28,7 @@ export interface UpdatePatientDto {
   email?: string;
   address?: string;
   emergencyContact?: string;
+  referredById?: string;
 }
 
 @Injectable()
@@ -63,6 +65,18 @@ export class PatientsService {
       where,
       orderBy: { created_at: 'desc' },
       include: {
+        referred_by: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                phone: true,
+              },
+            },
+          },
+        },
         _count: {
           select: {
             invoices: true,
@@ -81,6 +95,19 @@ export class PatientsService {
         center_id: centerId, // Strict Center Isolation check
       },
       include: {
+        referred_by: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                phone: true,
+                email: true,
+              },
+            },
+          },
+        },
         prescriptions: {
           orderBy: { created_at: 'desc' },
           take: 5,
@@ -115,6 +142,68 @@ export class PatientsService {
     return patient;
   }
 
+  async getMarketingOfficers(centerId?: string) {
+    const baseWhere: any = {
+      status: 'ACTIVE',
+      user: {
+        status: 'ACTIVE',
+        role: {
+          name: {
+            equals: 'MARKETING_OFFICER',
+            mode: 'insensitive',
+          },
+        },
+      },
+    };
+
+    if (centerId) {
+      const centerOfficers = await this.prisma.employee.findMany({
+        where: { ...baseWhere, center_id: centerId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              first_name: true,
+              last_name: true,
+              phone: true,
+              email: true,
+              role: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { employee_code: 'asc' },
+      });
+      if (centerOfficers.length > 0) {
+        return centerOfficers;
+      }
+    }
+
+    return this.prisma.employee.findMany({
+      where: baseWhere,
+      include: {
+        user: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+            phone: true,
+            email: true,
+            role: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { employee_code: 'asc' },
+    });
+  }
+
   async createPatient(
     centerId: string,
     dto: CreatePatientDto,
@@ -135,7 +224,22 @@ export class PatientsService {
         email: dto.email?.trim() || null,
         address: dto.address,
         emergency_contact: dto.emergencyContact,
+        referred_by_id: dto.referredById?.trim() || null,
         created_by: creatorId,
+      },
+      include: {
+        referred_by: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                phone: true,
+              },
+            },
+          },
+        },
       },
     });
   }
@@ -151,16 +255,34 @@ export class PatientsService {
     return this.prisma.patient.update({
       where: { id },
       data: {
-        first_name: dto.firstName,
-        last_name: dto.lastName,
-        dob: dto.dob ? new Date(dto.dob) : undefined,
+        first_name: dto.firstName ? dto.firstName.trim() : undefined,
+        last_name: dto.lastName ? dto.lastName.trim() : undefined,
+        dob: dto.dob ? new Date(dto.dob) : dto.dob === '' ? null : undefined,
         gender: dto.gender,
         blood_group: dto.bloodGroup,
-        phone: dto.phone,
-        email: dto.email,
+        phone: dto.phone ? dto.phone.trim() : undefined,
+        email: dto.email ? dto.email.trim() : dto.email === '' ? null : undefined,
         address: dto.address,
         emergency_contact: dto.emergencyContact,
+        referred_by_id:
+          dto.referredById !== undefined
+            ? dto.referredById?.trim() || null
+            : undefined,
         updated_by: updaterId,
+      },
+      include: {
+        referred_by: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                phone: true,
+              },
+            },
+          },
+        },
       },
     });
   }

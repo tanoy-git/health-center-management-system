@@ -18,6 +18,8 @@ import {
   Mail,
   MapPin,
   ShieldAlert,
+  UserCheck,
+  Pencil,
 } from 'lucide-react';
 
 export default function PatientsPage() {
@@ -29,6 +31,23 @@ export default function PatientsPage() {
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [marketingOfficers, setMarketingOfficers] = useState<any[]>([]);
+
+  // Edit State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingPatient, setEditingPatient] = useState<any | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    firstName: '',
+    lastName: '',
+    dob: '',
+    gender: 'MALE',
+    bloodGroup: 'O+',
+    phone: '',
+    email: '',
+    address: '',
+    emergencyContact: '',
+    referredById: '',
+  });
 
   // Form State
   const [formData, setFormData] = useState({
@@ -41,10 +60,12 @@ export default function PatientsPage() {
     email: '',
     address: '',
     emergencyContact: '',
+    referredById: '',
   });
 
   useEffect(() => {
     loadPatients();
+    loadMarketingOfficers();
   }, [activeCenter, search]);
 
   const loadPatients = async () => {
@@ -56,6 +77,15 @@ export default function PatientsPage() {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMarketingOfficers = async () => {
+    try {
+      const data = await apiRequest('/patients/marketing-officers');
+      setMarketingOfficers(data || []);
+    } catch (e) {
+      console.error('Error loading marketing officers:', e);
     }
   };
 
@@ -89,11 +119,55 @@ export default function PatientsPage() {
         email: '',
         address: '',
         emergencyContact: '',
+        referredById: '',
       });
       loadPatients();
       setTimeout(() => setToastMessage(null), 5000);
     } catch (err: any) {
       alert(err.message || 'Registration failed');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleOpenEditModal = (p: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingPatient(p);
+    setEditFormData({
+      firstName: p.first_name || '',
+      lastName: p.last_name || '',
+      dob: p.dob ? new Date(p.dob).toISOString().split('T')[0] : '',
+      gender: p.gender || 'MALE',
+      bloodGroup: p.blood_group || 'O+',
+      phone: p.phone || '',
+      email: p.email || '',
+      address: p.address || '',
+      emergencyContact: p.emergency_contact || '',
+      referredById: p.referred_by_id || '',
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdatePatient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPatient) return;
+    setSubmitting(true);
+    try {
+      const res = await apiRequest(`/patients/${editingPatient.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(editFormData),
+      });
+
+      setToastMessage(`Patient ${res.uhid} (${res.first_name} ${res.last_name}) updated successfully`);
+      setIsEditModalOpen(false);
+      setEditingPatient(null);
+      loadPatients();
+      if (selectedPatient?.id === editingPatient.id) {
+        handleSelectPatient(editingPatient.id);
+      }
+      setTimeout(() => setToastMessage(null), 5000);
+    } catch (err: any) {
+      alert(err.message || 'Update failed');
     } finally {
       setSubmitting(false);
     }
@@ -184,7 +258,8 @@ export default function PatientsPage() {
                     <th className="py-2.5 px-4">Patient Name</th>
                     <th className="py-2.5 px-4">Gender & Blood</th>
                     <th className="py-2.5 px-4">Phone</th>
-                    <th className="py-2.5 px-4 text-right">Records</th>
+                    <th className="py-2.5 px-4 text-center">Records</th>
+                    <th className="py-2.5 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -203,7 +278,13 @@ export default function PatientsPage() {
                           {p.uhid}
                         </td>
                         <td className="py-3 px-4 font-semibold text-foreground">
-                          {p.first_name} {p.last_name}
+                          <div>{p.first_name} {p.last_name}</div>
+                          {p.referred_by && (
+                            <div className="text-[10px] text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1 mt-0.5">
+                              <UserCheck className="h-2.5 w-2.5" />
+                              <span>Ref: {p.referred_by.user?.first_name} {p.referred_by.user?.last_name}</span>
+                            </div>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-muted-foreground">
                           {p.gender} | {p.blood_group || 'N/A'}
@@ -211,12 +292,25 @@ export default function PatientsPage() {
                         <td className="py-3 px-4 text-muted-foreground">
                           {p.phone}
                         </td>
-                        <td className="py-3 px-4 text-right">
+                        <td className="py-3 px-4 text-center">
                           <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold">
                             <span>{p._count?.invoices || 0} bills</span>
                             <span>•</span>
                             <span>{p._count?.prescriptions || 0} Rx</span>
                           </span>
+                        </td>
+                        <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                          {hasPermission('patients:write') && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleOpenEditModal(p, e)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-semibold text-foreground hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors shadow-sm"
+                              title="Edit patient details"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              <span>Edit</span>
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -231,18 +325,31 @@ export default function PatientsPage() {
         <div className="rounded-xl border border-border bg-card shadow-sm p-5 space-y-5">
           {selectedPatient ? (
             <div className="space-y-4">
-              <div className="border-b border-border pb-3">
-                <span className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">
-                  {selectedPatient.uhid}
-                </span>
-                <h2 className="text-base font-bold text-foreground">
-                  {selectedPatient.first_name} {selectedPatient.last_name}
-                </h2>
-                <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
-                  <span>{selectedPatient.gender}</span>
-                  <span>•</span>
-                  <span>Blood: {selectedPatient.blood_group || 'Unknown'}</span>
+              <div className="border-b border-border pb-3 flex items-start justify-between">
+                <div>
+                  <span className="font-mono text-[11px] font-bold text-blue-600 dark:text-blue-400">
+                    {selectedPatient.uhid}
+                  </span>
+                  <h2 className="text-base font-bold text-foreground">
+                    {selectedPatient.first_name} {selectedPatient.last_name}
+                  </h2>
+                  <div className="flex items-center gap-2 text-[11px] text-muted-foreground mt-0.5">
+                    <span>{selectedPatient.gender}</span>
+                    <span>•</span>
+                    <span>Blood: {selectedPatient.blood_group || 'Unknown'}</span>
+                  </div>
                 </div>
+                {hasPermission('patients:write') && (
+                  <button
+                    type="button"
+                    onClick={(e) => handleOpenEditModal(selectedPatient, e)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-semibold text-foreground hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors shadow-sm"
+                    title="Edit patient details"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    <span>Edit</span>
+                  </button>
+                )}
               </div>
 
               {/* Contact Information */}
@@ -271,6 +378,27 @@ export default function PatientsPage() {
                     <span className="text-foreground">
                       {selectedPatient.emergency_contact}
                     </span>
+                  </div>
+                )}
+                {selectedPatient.referred_by && (
+                  <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-[10px] uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                        <UserCheck className="h-3.5 w-3.5" />
+                        <span>Referred By (Marketing Officer)</span>
+                      </span>
+                      <span className="font-mono text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                        {selectedPatient.referred_by.employee_code}
+                      </span>
+                    </div>
+                    <p className="font-semibold text-foreground">
+                      {selectedPatient.referred_by.user?.first_name} {selectedPatient.referred_by.user?.last_name}
+                    </p>
+                    {selectedPatient.referred_by.user?.phone && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Phone: {selectedPatient.referred_by.user.phone}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -529,6 +657,33 @@ export default function PatientsPage() {
                 />
               </div>
 
+              <div className="space-y-1">
+                <label className="font-medium text-foreground flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <UserCheck className="h-3.5 w-3.5 text-blue-600" />
+                    <span>Referred By (Marketing Officer)</span>
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-normal">Optional</span>
+                </label>
+                <select
+                  value={formData.referredById}
+                  onChange={(e) =>
+                    setFormData({ ...formData, referredById: e.target.value })
+                  }
+                  className="w-full rounded-lg border border-input bg-background p-2 focus:ring-2 focus:ring-primary outline-none"
+                >
+                  <option value="">-- Direct Patient (No Referral) --</option>
+                  {marketingOfficers.map((mo) => (
+                    <option key={mo.id} value={mo.id}>
+                      {mo.user?.first_name} {mo.user?.last_name} ({mo.employee_code || 'MO'} • {mo.user?.phone || 'No phone'})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-muted-foreground">
+                  Select the marketing officer who brought this patient to the center, or leave empty if patient arrived without reference.
+                </p>
+              </div>
+
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
                 <button
                   type="button"
@@ -543,6 +698,213 @@ export default function PatientsPage() {
                   className="rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 font-semibold text-white shadow-sm shadow-blue-500/20 disabled:opacity-50"
                 >
                   {submitting ? 'Registering...' : 'Register & Generate UHID'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Edit Patient Modal */}
+      {isEditModalOpen && editingPatient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
+          <div className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-2xl border border-border bg-card p-4 sm:p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 my-auto">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-bold text-foreground">
+                    Edit Patient Details
+                  </h2>
+                  <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                    {editingPatient.uhid}
+                  </span>
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Update demographic or referral details for this patient
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsEditModalOpen(false);
+                  setEditingPatient(null);
+                }}
+                className="rounded-lg p-1 text-muted-foreground hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdatePatient} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-medium text-foreground">First Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.firstName}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, firstName: e.target.value })
+                    }
+                    placeholder="John"
+                    className="w-full rounded-lg border border-input bg-background p-2 focus:ring-2 focus:ring-primary outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-medium text-foreground">Last Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editFormData.lastName}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, lastName: e.target.value })
+                    }
+                    placeholder="Doe"
+                    className="w-full rounded-lg border border-input bg-background p-2 focus:ring-2 focus:ring-primary outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <label className="font-medium text-foreground">Date of Birth</label>
+                  <input
+                    type="date"
+                    value={editFormData.dob}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, dob: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-input bg-background p-2 focus:ring-2 focus:ring-primary outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-medium text-foreground">Gender *</label>
+                  <select
+                    value={editFormData.gender}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, gender: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-input bg-background p-2 focus:ring-2 focus:ring-primary outline-none"
+                  >
+                    <option value="MALE">Male</option>
+                    <option value="FEMALE">Female</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="font-medium text-foreground">Blood Group</label>
+                  <select
+                    value={editFormData.bloodGroup}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, bloodGroup: e.target.value })
+                    }
+                    className="w-full rounded-lg border border-input bg-background p-2 focus:ring-2 focus:ring-primary outline-none"
+                  >
+                    <option value="O+">O+</option>
+                    <option value="O-">O-</option>
+                    <option value="A+">A+</option>
+                    <option value="A-">A-</option>
+                    <option value="B+">B+</option>
+                    <option value="B-">B-</option>
+                    <option value="AB+">AB+</option>
+                    <option value="AB-">AB-</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-medium text-foreground">Phone Number *</label>
+                  <input
+                    type="tel"
+                    required
+                    value={editFormData.phone}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, phone: e.target.value })
+                    }
+                    placeholder="+1 555-0199"
+                    className="w-full rounded-lg border border-input bg-background p-2 focus:ring-2 focus:ring-primary outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-medium text-foreground">Email Address</label>
+                  <input
+                    type="email"
+                    value={editFormData.email}
+                    onChange={(e) =>
+                      setEditFormData({ ...editFormData, email: e.target.value })
+                    }
+                    placeholder="patient@example.com"
+                    className="w-full rounded-lg border border-input bg-background p-2 focus:ring-2 focus:ring-primary outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-medium text-foreground">Residential Address</label>
+                <input
+                  type="text"
+                  value={editFormData.address}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, address: e.target.value })
+                  }
+                  placeholder="Street address, City, Postal Code"
+                  className="w-full rounded-lg border border-input bg-background p-2 focus:ring-2 focus:ring-primary outline-none"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-medium text-foreground">Emergency Contact</label>
+                <input
+                  type="text"
+                  value={editFormData.emergencyContact}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, emergencyContact: e.target.value })
+                  }
+                  placeholder="Contact person & phone number"
+                  className="w-full rounded-lg border border-input bg-background p-2 focus:ring-2 focus:ring-primary outline-none"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-medium text-foreground flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <UserCheck className="h-3.5 w-3.5 text-blue-600" />
+                    <span>Referred By (Marketing Officer)</span>
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-normal">Optional</span>
+                </label>
+                <select
+                  value={editFormData.referredById}
+                  onChange={(e) =>
+                    setEditFormData({ ...editFormData, referredById: e.target.value })
+                  }
+                  className="w-full rounded-lg border border-input bg-background p-2 focus:ring-2 focus:ring-primary outline-none"
+                >
+                  <option value="">-- Direct Patient (No Referral) --</option>
+                  {marketingOfficers.map((mo) => (
+                    <option key={mo.id} value={mo.id}>
+                      {mo.user?.first_name} {mo.user?.last_name} ({mo.employee_code || 'MO'} • {mo.user?.phone || 'No phone'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditModalOpen(false);
+                    setEditingPatient(null);
+                  }}
+                  className="rounded-lg border border-border px-4 py-2 font-medium hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 font-semibold text-white shadow-sm shadow-blue-500/20 disabled:opacity-50"
+                >
+                  {submitting ? 'Saving Changes...' : 'Save Changes'}
                 </button>
               </div>
             </form>

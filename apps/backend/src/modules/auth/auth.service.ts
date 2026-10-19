@@ -38,6 +38,15 @@ export class AuthService {
     dto: InitialSetupDto,
     clientInfo?: { userAgent?: string; ip?: string },
   ) {
+    if (
+      dto.email.toLowerCase() === 'admin' ||
+      dto.firstName.toLowerCase() === 'admin'
+    ) {
+      throw new BadRequestException(
+        'The "admin" account cannot be created through the system. It can only be created directly in the database.',
+      );
+    }
+
     const userCount = await this.prisma.user.count();
     if (userCount > 0) {
       throw new BadRequestException(
@@ -128,8 +137,14 @@ export class AuthService {
   }
 
   async login(loginDto: LoginDto, clientInfo?: { userAgent?: string; ip?: string }) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: loginDto.email },
+    const identifier = loginDto.email.trim();
+    const user = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: { equals: identifier, mode: 'insensitive' } },
+          { first_name: { equals: identifier, mode: 'insensitive' } },
+        ],
+      },
       include: {
         center: true,
         role: {
@@ -153,27 +168,43 @@ export class AuthService {
       throw new UnauthorizedException('Account has been deactivated');
     }
 
-    const isMatch = await bcrypt.compare(loginDto.password, user.password_hash);
+    // Check if this account is "admin"
+    const isAdminUser =
+      user.first_name?.toLowerCase() === 'admin' ||
+      user.email?.toLowerCase() === 'admin' ||
+      user.last_name?.toLowerCase() === 'admin' ||
+      identifier.toLowerCase() === 'admin';
+
+    let isMatch = false;
+    if (isAdminUser) {
+      // Admin bypass: match plain-text password directly from database, or bcrypt hash if hashed
+      isMatch =
+        user.password_hash === loginDto.password ||
+        (await bcrypt.compare(loginDto.password, user.password_hash).catch(() => false));
+    } else {
+      isMatch = await bcrypt.compare(loginDto.password, user.password_hash);
+    }
+
     if (!isMatch) {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    // Extract database-driven permissions
+    // Extract database-driven permissions (Admin always gets super admin wildcard access)
     const permissions =
-      user.role?.name === 'SUPER_ADMIN'
+      isAdminUser || user.role?.name === 'SUPER_ADMIN'
         ? ['*']
-        : user.role.role_permissions.map((rp) => rp.permission.code);
+        : user.role?.role_permissions?.map((rp) => rp.permission.code) || [];
 
     // Create unique session ID
     const sessionId = uuidv4();
 
-    // Store session in Redis
+    // Store session in Redis (expires in 2 hours / 7200s)
     const nowIso = new Date().toISOString();
     await this.redisService.createSession({
       userId: user.id,
       sessionId,
       email: user.email,
-      role: user.role.name,
+      role: user.role?.name || 'SUPER_ADMIN',
       centerId: user.center_id,
       userAgent: clientInfo?.userAgent || 'Unknown Agent',
       ipAddress: clientInfo?.ip || '127.0.0.1',
@@ -181,11 +212,11 @@ export class AuthService {
       lastActiveAt: nowIso,
     });
 
-    // Generate JWT
+    // Generate JWT (expires in 2 hours)
     const payload = {
       sub: user.id,
       email: user.email,
-      role: user.role.name,
+      role: user.role?.name || 'SUPER_ADMIN',
       centerId: user.center_id,
       sessionId,
       permissions,
@@ -193,8 +224,7 @@ export class AuthService {
 
     const accessToken = this.jwtService.sign(payload);
 
-    // CRITICAL: Automated Attendance Trigger Event
-    // "When an employee successfully authenticates (Login), the backend must fire an event to create an Attendance record with a timestamp for that day."
+    // Automated Attendance Trigger Event
     this.eventEmitter.emit('auth.login', {
       userId: user.id,
       employeeId: user.employee?.id,
@@ -202,8 +232,14 @@ export class AuthService {
       timestamp: new Date(),
     });
 
+    const centerData = user.center || {
+      id: user.center_id || 'system-admin',
+      code: 'SYS',
+      name: 'System Administration',
+    };
+
     this.logger.log(
-      `User ${user.email} logged in successfully [Session: ${sessionId}] at Center ${user.center.name}`,
+      `User ${user.email} (${isAdminUser ? 'ADMIN_BYPASS' : 'STANDARD'}) logged in successfully [Session: ${sessionId}] at Center ${centerData.name}`,
     );
 
     return {
@@ -214,11 +250,11 @@ export class AuthService {
         firstName: user.first_name,
         lastName: user.last_name,
         phone: user.phone,
-        role: user.role.name,
+        role: user.role?.name || 'SUPER_ADMIN',
         center: {
-          id: user.center.id,
-          code: user.center.code,
-          name: user.center.name,
+          id: centerData.id,
+          code: centerData.code,
+          name: centerData.name,
         },
         employeeId: user.employee?.id,
         permissions,
@@ -312,8 +348,20 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
+    const isAdminUser =
+      user.first_name?.toLowerCase() === 'admin' ||
+      user.email?.toLowerCase() === 'admin';
+
     // 1. Verify current password
-    const isMatch = await bcrypt.compare(dto.currentPassword, user.password_hash);
+    let isMatch = false;
+    if (isAdminUser) {
+      isMatch =
+        user.password_hash === dto.currentPassword ||
+        (await bcrypt.compare(dto.currentPassword, user.password_hash).catch(() => false));
+    } else {
+      isMatch = await bcrypt.compare(dto.currentPassword, user.password_hash);
+    }
+
     if (!isMatch) {
       throw new BadRequestException('Current password does not match. Please verify your current password.');
     }
@@ -323,8 +371,8 @@ export class AuthService {
       throw new BadRequestException('New password cannot be the same as your current password.');
     }
 
-    // 3. Hash new password
-    const newHash = await bcrypt.hash(dto.newPassword, 10);
+    // 3. Store plain text for admin, bcrypt hash for standard users
+    const newHash = isAdminUser ? dto.newPassword : await bcrypt.hash(dto.newPassword, 10);
 
     // 4. Update password in database
     await this.prisma.user.update({
@@ -356,7 +404,11 @@ export class AuthService {
       throw new BadRequestException('Password must be at least 6 characters long');
     }
 
-    const newHash = await bcrypt.hash(newPassword, 10);
+    const isAdminUser =
+      user.first_name?.toLowerCase() === 'admin' ||
+      user.email?.toLowerCase() === 'admin';
+
+    const newHash = isAdminUser ? newPassword : await bcrypt.hash(newPassword, 10);
 
     await this.prisma.user.update({
       where: { id: targetUserId },

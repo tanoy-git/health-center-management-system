@@ -73,6 +73,17 @@ export class HrService {
   async createEmployee(centerId: string, dto: CreateEmployeeDto, creatorId?: string) {
     const targetCenterId = dto.centerId || centerId;
 
+    // Disallow creating "admin" via system
+    if (
+      dto.email.trim().toLowerCase() === 'admin' ||
+      dto.firstName.trim().toLowerCase() === 'admin' ||
+      dto.employeeCode.trim().toLowerCase() === 'admin'
+    ) {
+      throw new BadRequestException(
+        'The "admin" account cannot be created through the system. It can only be created directly in the database.',
+      );
+    }
+
     // Check if user email already exists
     const existingUser = await this.prisma.user.findUnique({
       where: { email: dto.email },

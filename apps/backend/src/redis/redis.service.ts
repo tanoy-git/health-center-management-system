@@ -18,7 +18,7 @@ export interface UserSessionData {
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   private client: Redis | null = null;
-  private readonly sessionTtl = 86400; // 24 hours in seconds
+  private readonly sessionTtl = 7200; // 2 hours in seconds
   private isConnected = false;
 
   // In-memory fallback for local development without Redis

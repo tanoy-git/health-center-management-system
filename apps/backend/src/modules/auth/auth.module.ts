@@ -18,7 +18,7 @@ import { JwtStrategy } from './jwt.strategy';
           'aegis_enterprise_jwt_super_secret_key_2026_clinical_his',
         ),
         signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRATION', '1d'),
+          expiresIn: configService.get<string>('JWT_EXPIRATION', '2h'),
         },
       }),
     }),

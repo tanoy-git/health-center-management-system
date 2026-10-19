@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import './globals.css';
 import { ThemeProvider } from '@/lib/theme-context';
 import { AuthProvider } from '@/lib/auth-context';
+import { SidebarProvider } from '@/lib/sidebar-context';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 
@@ -38,18 +39,20 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-screen bg-background text-foreground font-sans antialiased">
+      <body className="min-h-screen bg-background text-foreground font-sans antialiased overflow-x-hidden">
         <ThemeProvider>
           <AuthProvider>
-            <div className="min-h-screen flex flex-col">
-              <Header />
-              <div className="flex flex-1">
-                <Sidebar />
-                <main className="flex-1 p-6 overflow-y-auto max-w-7xl mx-auto w-full">
-                  {children}
-                </main>
+            <SidebarProvider>
+              <div className="min-h-screen flex flex-col">
+                <Header />
+                <div className="flex flex-1 relative">
+                  <Sidebar />
+                  <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto max-w-7xl mx-auto w-full min-w-0">
+                    {children}
+                  </main>
+                </div>
               </div>
-            </div>
+            </SidebarProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

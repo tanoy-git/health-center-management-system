@@ -13,12 +13,15 @@ import {
   User as UserIcon,
   Check,
   KeyRound,
+  Menu,
 } from 'lucide-react';
+import { useSidebar } from '@/lib/sidebar-context';
 import ChangePasswordModal from './ChangePasswordModal';
 
 export default function Header() {
   const { user, activeCenter, availableCenters, switchCenter, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { toggleSidebar } = useSidebar();
   const [centerDropdownOpen, setCenterDropdownOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
@@ -29,23 +32,33 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/75">
-      <div className="flex h-16 items-center justify-between px-6">
-        {/* Left: Branding & Center Indicator */}
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-tr from-blue-600 to-cyan-500 text-white shadow-md shadow-blue-500/20">
+      <div className="flex h-16 items-center justify-between px-3 sm:px-6">
+        {/* Left: Hamburger Toggle, Branding & Center Indicator */}
+        <div className="flex items-center gap-2 sm:gap-4 md:gap-6">
+          {/* Sidebar Toggle Button */}
+          <button
+            onClick={toggleSidebar}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-card hover:bg-muted text-foreground transition-colors shrink-0"
+            title="Toggle Sidebar (Expand/Collapse)"
+            aria-label="Toggle Sidebar Menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-tr from-blue-600 to-cyan-500 text-white shadow-md shadow-blue-500/20 shrink-0">
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-base tracking-tight text-foreground">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="font-bold text-sm sm:text-base tracking-tight text-foreground whitespace-nowrap">
                   AEGIS HIS
                 </span>
-                <span className="rounded bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:text-blue-300">
+                <span className="rounded bg-blue-100 dark:bg-blue-900/50 px-1 py-0.5 text-[9px] sm:text-[10px] font-semibold text-blue-700 dark:text-blue-300">
                   v2.0
                 </span>
               </div>
-              <p className="text-[11px] text-muted-foreground hidden sm:block">
+              <p className="text-[10px] text-muted-foreground hidden lg:block">
                 Enterprise Clinical Health System
               </p>
             </div>
@@ -57,22 +70,22 @@ export default function Header() {
           <div className="relative">
             <button
               onClick={() => isSuperAdmin && setCenterDropdownOpen(!centerDropdownOpen)}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+              className={`flex items-center gap-1.5 sm:gap-2 rounded-lg border px-2 sm:px-3 py-1.5 text-xs font-medium transition-all ${
                 isSuperAdmin
                   ? 'border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/30 hover:bg-blue-100/60 text-blue-700 dark:text-blue-300 cursor-pointer shadow-sm'
                   : 'border-border bg-muted/40 text-foreground cursor-default'
               }`}
             >
-              <Building2 className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              <Building2 className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
               <div className="text-left">
-                <span className="block text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+                <span className="hidden sm:block text-[9px] uppercase tracking-wider text-muted-foreground font-semibold">
                   Branch Context
                 </span>
-                <span className="font-semibold truncate max-w-[170px] block">
+                <span className="font-semibold truncate max-w-[100px] xs:max-w-[130px] sm:max-w-[170px] block text-[11px] sm:text-xs">
                   {activeCenter?.name || 'Loading Center...'}
                 </span>
               </div>
-              {isSuperAdmin && <ChevronDown className="h-3.5 w-3.5 ml-1 opacity-70" />}
+              {isSuperAdmin && <ChevronDown className="h-3 w-3 ml-0.5 opacity-70 shrink-0" />}
             </button>
 
             {/* Super Admin Center Switcher Dropdown */}

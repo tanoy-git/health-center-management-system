@@ -164,15 +164,14 @@ export default function InvoicesPage() {
                       {inv.items?.length || 0} service(s)
                     </td>
                     <td className="py-3 px-4 font-mono font-bold text-foreground">
-                      ${Number(inv.total_amount).toFixed(2)}
+                      {Number(inv.total_amount).toFixed(2)} tk
                     </td>
                     <td className="py-3 px-4">
                       <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                          inv.payment_status === 'PAID'
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${inv.payment_status === 'PAID'
                             ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
                             : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
-                        }`}
+                          }`}
                       >
                         {inv.payment_status === 'PAID' ? (
                           <CheckCircle className="h-3 w-3" />

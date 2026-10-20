@@ -163,7 +163,7 @@ export default function Sidebar() {
     (item) => pathname === item.href || pathname.startsWith(item.href + '/'),
   );
 
-  const [settingsOpen, setSettingsOpen] = useState(true);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Auto-expand settings group if browsing a settings route
   useEffect(() => {
@@ -195,9 +195,8 @@ export default function Sidebar() {
 
       {/* Mobile Drawer Panel */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 w-72 max-w-[85vw] bg-card border-r border-border z-50 lg:hidden flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        className={`fixed top-0 bottom-0 left-0 w-72 max-w-[85vw] bg-card border-r border-border z-50 lg:hidden flex flex-col shadow-2xl transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'
+          }`}
       >
         {/* Mobile Drawer Header */}
         <div className="flex h-16 items-center justify-between px-4 border-b border-border bg-muted/20">
@@ -244,16 +243,14 @@ export default function Sidebar() {
                       key={item.href}
                       href={item.href}
                       onClick={closeMobile}
-                      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
-                        isActive
-                          ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20 font-semibold'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                      }`}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-medium transition-all ${isActive
+                        ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20 font-semibold'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        }`}
                     >
                       <Icon
-                        className={`h-4 w-4 shrink-0 ${
-                          isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'
-                        }`}
+                        className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'
+                          }`}
                       />
                       <span>{item.name}</span>
                     </Link>
@@ -269,20 +266,18 @@ export default function Sidebar() {
               <button
                 type="button"
                 onClick={() => setSettingsOpen(!settingsOpen)}
-                className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
-                  isSettingsRoute
-                    ? 'text-blue-600 dark:text-blue-400 bg-blue-50/60 dark:bg-blue-950/30'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`}
+                className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${isSettingsRoute
+                  ? 'text-blue-600 dark:text-blue-400 bg-blue-50/60 dark:bg-blue-950/30'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
               >
                 <div className="flex items-center gap-2.5">
                   <Settings className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   <span>Settings & Master Setup</span>
                 </div>
                 <ChevronDown
-                  className={`h-3.5 w-3.5 transition-transform duration-200 ${
-                    settingsOpen ? 'rotate-180' : ''
-                  }`}
+                  className={`h-3.5 w-3.5 transition-transform duration-200 ${settingsOpen ? 'rotate-180' : ''
+                    }`}
                 />
               </button>
 
@@ -296,11 +291,10 @@ export default function Sidebar() {
                         key={item.href}
                         href={item.href}
                         onClick={closeMobile}
-                        className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${
-                          isActive
-                            ? 'bg-blue-600 text-white font-semibold shadow-xs'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        }`}
+                        className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${isActive
+                          ? 'bg-blue-600 text-white font-semibold shadow-xs'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
                       >
                         <Icon className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate">{item.name}</span>
@@ -332,9 +326,8 @@ export default function Sidebar() {
       {/* Supports Expand / Collapse into compact icon rail                  */}
       {/* =================================================================== */}
       <aside
-        className={`hidden lg:flex flex-col shrink-0 border-r border-border bg-card transition-all duration-300 ease-in-out min-h-[calc(100vh-4rem)] ${
-          isCollapsed ? 'w-16' : 'w-64 xl:w-72'
-        }`}
+        className={`hidden lg:flex flex-col shrink-0 border-r border-border bg-card transition-all duration-300 ease-in-out min-h-[calc(100vh-4rem)] ${isCollapsed ? 'w-16' : 'w-64 xl:w-72'
+          }`}
       >
         {/* Desktop Nav Items */}
         <div className="p-2.5 flex-1 space-y-3 overflow-y-auto">
@@ -361,18 +354,15 @@ export default function Sidebar() {
                       key={item.href}
                       href={item.href}
                       title={isCollapsed ? item.name : undefined}
-                      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
-                        isCollapsed ? 'justify-center px-2 py-2.5' : ''
-                      } ${
-                        isActive
+                      className={`flex items-center gap-3 rounded-lg px-3 py-2 text-xs font-medium transition-all ${isCollapsed ? 'justify-center px-2 py-2.5' : ''
+                        } ${isActive
                           ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20 font-semibold'
                           : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                      }`}
+                        }`}
                     >
                       <Icon
-                        className={`h-4 w-4 shrink-0 ${
-                          isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'
-                        }`}
+                        className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'
+                          }`}
                       />
                       {!isCollapsed && <span className="truncate">{item.name}</span>}
                     </Link>
@@ -390,20 +380,18 @@ export default function Sidebar() {
                   <button
                     type="button"
                     onClick={() => setSettingsOpen(!settingsOpen)}
-                    className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${
-                      isSettingsRoute
-                        ? 'text-blue-600 dark:text-blue-400 bg-blue-50/60 dark:bg-blue-950/30'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
+                    className={`w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all cursor-pointer ${isSettingsRoute
+                      ? 'text-blue-600 dark:text-blue-400 bg-blue-50/60 dark:bg-blue-950/30'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
                   >
                     <div className="flex items-center gap-2.5">
                       <Settings className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
                       <span className="truncate">Settings Menu</span>
                     </div>
                     <ChevronDown
-                      className={`h-3.5 w-3.5 transition-transform duration-200 shrink-0 ${
-                        settingsOpen ? 'rotate-180' : ''
-                      }`}
+                      className={`h-3.5 w-3.5 transition-transform duration-200 shrink-0 ${settingsOpen ? 'rotate-180' : ''
+                        }`}
                     />
                   </button>
 
@@ -416,11 +404,10 @@ export default function Sidebar() {
                           <Link
                             key={item.href}
                             href={item.href}
-                            className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${
-                              isActive
-                                ? 'bg-blue-600 text-white font-semibold shadow-xs'
-                                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                            }`}
+                            className={`flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${isActive
+                              ? 'bg-blue-600 text-white font-semibold shadow-xs'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                              }`}
                           >
                             <Icon className="h-3.5 w-3.5 shrink-0" />
                             <span className="truncate text-[11px]">{item.name}</span>
@@ -437,11 +424,10 @@ export default function Sidebar() {
                   <button
                     onClick={toggleCollapse}
                     title="Settings Menu (Click to expand)"
-                    className={`w-full flex items-center justify-center rounded-lg p-2.5 text-xs font-medium transition-all ${
-                      isSettingsRoute
-                        ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
+                    className={`w-full flex items-center justify-center rounded-lg p-2.5 text-xs font-medium transition-all ${isSettingsRoute
+                      ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
                   >
                     <Settings className="h-4 w-4" />
                   </button>
@@ -453,11 +439,10 @@ export default function Sidebar() {
                         key={item.href}
                         href={item.href}
                         title={item.name}
-                        className={`flex items-center justify-center rounded-lg p-2.5 text-xs font-medium transition-all ${
-                          isActive
-                            ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20 font-semibold'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        }`}
+                        className={`flex items-center justify-center rounded-lg p-2.5 text-xs font-medium transition-all ${isActive
+                          ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20 font-semibold'
+                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          }`}
                       >
                         <Icon className="h-4 w-4 shrink-0" />
                       </Link>
@@ -472,22 +457,21 @@ export default function Sidebar() {
         {/* Desktop Collapse / Expand Toggle Button */}
         <div className="p-2 border-t border-border bg-muted/20 flex flex-col gap-2">
           {!isCollapsed && (
-            <div className="rounded-lg border border-border bg-card p-2.5 text-[11px] hidden xl:block">
+            <div className="rounded-lg border bg-card p-2.5 text-[11px] hidden xl:block">
               <div className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 font-semibold">
                 <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-                <span>Center-Isolated EMR</span>
+                <span>CareWave EMR</span>
               </div>
               <p className="mt-1 text-muted-foreground text-[10px] leading-relaxed">
-                Multi-tenant scoping active.
+                ©2026 Asraful Islam Tanoy. All rights reserved.
               </p>
             </div>
           )}
 
           <button
             onClick={toggleCollapse}
-            className={`flex items-center gap-2 rounded-lg border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground p-2 text-xs font-medium transition-colors cursor-pointer ${
-              isCollapsed ? 'justify-center' : 'justify-between px-3'
-            }`}
+            className={`flex items-center gap-2 rounded-lg border border-border bg-card hover:bg-muted text-muted-foreground hover:text-foreground p-2 text-xs font-medium transition-colors cursor-pointer ${isCollapsed ? 'justify-center' : 'justify-between px-3'
+              }`}
             title={isCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
           >
             {!isCollapsed && <span className="text-[11px]">Collapse Menu</span>}

@@ -4,7 +4,7 @@ import * as bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('--- Seeding Aegis Enterprise HIS v2.0 Database ---');
+  console.log('--- Seeding Health Center Management System v2.0 Database ---');
 
   // 1. Create Centers
   const centerA = await prisma.center.upsert({
@@ -42,7 +42,7 @@ async function main() {
     { code: 'iam:users:write', name: 'Manage Users', module: 'IAM', description: 'Can create and edit users' },
     { code: 'iam:roles:manage', name: 'Manage Roles & RBAC', module: 'IAM', description: 'Can configure dynamic roles & permissions' },
     { code: 'center:manage', name: 'Manage Centers', module: 'IAM', description: 'Can register and configure physical hospital centers' },
-    
+
     // HR & Attendance & Payroll
     { code: 'hr:employees:read', name: 'View Employees', module: 'HR', description: 'Can view employee registry' },
     { code: 'hr:employees:write', name: 'Manage Employees', module: 'HR', description: 'Can onboard and edit employee records' },

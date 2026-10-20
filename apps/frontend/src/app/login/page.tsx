@@ -119,10 +119,14 @@ export default function LoginPage() {
         {/* Brand Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25">
-            <ShieldCheck className="h-7 w-7" />
+            <img
+              src="/carewave-logo-cropped.png"
+              alt="CareWave"
+              className="h-full w-full object-contain"
+            />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Aegis Enterprise HIS
+            CareWave
           </h1>
           <p className="text-xs text-muted-foreground">
             Multi-Tenant Clinical ERP & Hospital Management System

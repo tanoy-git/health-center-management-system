@@ -189,7 +189,7 @@ export default function A4InvoiceModal({
 
           {/* Footer Notes */}
           <div className="border-t border-slate-200 pt-4 flex items-center justify-between text-[10px] text-slate-400">
-            <span>Aegis Enterprise HIS v2.0 - Certified Electronic Billing Record</span>
+            <span>CareWave EMR v2.0 - Certified Electronic Billing Record</span>
             <span>Computer Generated Invoice - No physical signature required</span>
           </div>
         </div>

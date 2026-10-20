@@ -7,7 +7,7 @@ import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
 
 export const metadata: Metadata = {
-  title: 'Aegis Enterprise HIS v2.0 | Clinical ERP',
+  title: 'Health Center Management System v2.0 | Clinical ERP',
   description:
     'Multi-Center Clinic & Hospital Management ERP with Center-Isolated Data Architecture, Dynamic RBAC, POS Billing, and Clinical Prescriptions',
 };

@@ -22,6 +22,7 @@ import {
   Eye,
   Pill,
   BarChart3,
+  Tags,
 } from 'lucide-react';
 
 interface NavItem {
@@ -47,6 +48,12 @@ const navItems: NavItem[] = [
     name: 'Billing & POS',
     href: '/pos',
     icon: CreditCard,
+    permission: 'billing:pos:access',
+  },
+  {
+    name: 'Services & Discounts',
+    href: '/services',
+    icon: Tags,
     permission: 'billing:pos:access',
   },
   {

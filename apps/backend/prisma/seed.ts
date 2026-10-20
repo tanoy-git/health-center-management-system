@@ -351,7 +351,32 @@ async function main() {
     },
   });
 
-  // 5. Seed Services Catalog for Center A & Center B
+  // 5. Seed Dynamic Service Categories Table
+  const sampleCategories = [
+    { code: 'CONSULTATION', name: 'Doctor Consultation', description: 'General & specialist doctor OPD consultations' },
+    { code: 'USG', name: 'Ultrasonography (USG)', description: 'Abdominal, pelvic, pregnancy, and vascular ultrasound scans' },
+    { code: 'PROCEDURE', name: 'Clinical Procedures', description: 'ECG, dressing, minor OT procedures, catheterization' },
+    { code: 'LAB_TEST', name: 'Laboratory Diagnostics', description: 'Clinical pathology, hematology, biochemistry, microbiology' },
+    { code: 'RADIOLOGY', name: 'Radiology & Imaging', description: 'X-Ray, CT, fluoroscopy' },
+    { code: 'EYE', name: 'Ophthalmology & Vision', description: 'Refraction test, slit lamp exam, eye pressure check' },
+  ];
+
+  const categoryMap = new Map<string, string>();
+  for (const cat of sampleCategories) {
+    const c = await prisma.serviceCategory.upsert({
+      where: { code: cat.code },
+      update: { name: cat.name, description: cat.description, status: 'ACTIVE' },
+      create: {
+        code: cat.code,
+        name: cat.name,
+        description: cat.description,
+        status: 'ACTIVE',
+      },
+    });
+    categoryMap.set(cat.code, c.id);
+  }
+
+  // 5.1 Seed Services Catalog for Center A & Center B
   const sampleServices = [
     { code: 'SRV-CONS-01', name: 'General Physician Consultation', category: 'CONSULTATION', price: 50.0, tax_rate: 0 },
     { code: 'SRV-CONS-02', name: 'Specialist Cardiology Consultation', category: 'CONSULTATION', price: 120.0, tax_rate: 0 },
@@ -376,12 +401,19 @@ async function main() {
             code: s.code,
           },
         },
-        update: { name: s.name, category: s.category, price: s.price, tax_rate: s.tax_rate },
+        update: {
+          name: s.name,
+          category: s.category,
+          category_id: categoryMap.get(s.category),
+          price: s.price,
+          tax_rate: s.tax_rate,
+        },
         create: {
           center_id: center.id,
           code: s.code,
           name: s.name,
           category: s.category,
+          category_id: categoryMap.get(s.category),
           price: s.price,
           tax_rate: s.tax_rate,
           status: 'ACTIVE',
@@ -389,6 +421,35 @@ async function main() {
       });
     }
   }
+
+  // 5.2 Seed Sample Discount Campaign (60+ Male Patient Discount)
+  const usgCatId = categoryMap.get('USG');
+  await prisma.discountCampaign.upsert({
+    where: { id: 'campaign-senior-male-60' },
+    update: {
+      name: 'Senior Citizen Male Privilege (60+ Yrs)',
+      code: 'SENIOR60',
+      description: '15% automatic discount for all male patients aged 60 and above on USG and clinical consultations',
+      discount_type: 'PERCENTAGE',
+      discount_value: 15.0,
+      min_age: 60,
+      max_age: 120,
+      gender: 'MALE',
+      status: 'ACTIVE',
+    },
+    create: {
+      id: 'campaign-senior-male-60',
+      name: 'Senior Citizen Male Privilege (60+ Yrs)',
+      code: 'SENIOR60',
+      description: '15% automatic discount for all male patients aged 60 and above on USG and clinical consultations',
+      discount_type: 'PERCENTAGE',
+      discount_value: 15.0,
+      min_age: 60,
+      max_age: 120,
+      gender: 'MALE',
+      status: 'ACTIVE',
+    },
+  });
 
   // 6. Seed Medicines
   const sampleMedicines = [

@@ -6,12 +6,86 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 
+export interface CreateServiceCategoryDto {
+  code: string;
+  name: string;
+  description?: string;
+  status?: string;
+}
+
+export interface UpdateServiceCategoryDto {
+  code?: string;
+  name?: string;
+  description?: string;
+  status?: string;
+}
+
 export interface CreateServiceCatalogDto {
   code: string;
   name: string;
   category: string;
+  categoryId?: string;
   price: number;
   taxRate?: number;
+  status?: string;
+}
+
+export interface UpdateServiceCatalogDto {
+  code?: string;
+  name?: string;
+  category?: string;
+  categoryId?: string;
+  price?: number;
+  taxRate?: number;
+  status?: string;
+}
+
+export interface CreateDiscountCampaignDto {
+  name: string;
+  code?: string;
+  description?: string;
+  discountType: string; // PERCENTAGE, FIXED_AMOUNT
+  discountValue: number;
+  minAge?: number;
+  maxAge?: number;
+  gender?: string; // MALE, FEMALE, OTHER, ALL
+  centerId?: string;
+  serviceId?: string;
+  categoryId?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+}
+
+export interface UpdateDiscountCampaignDto {
+  name?: string;
+  code?: string;
+  description?: string;
+  discountType?: string;
+  discountValue?: number;
+  minAge?: number;
+  maxAge?: number;
+  gender?: string;
+  centerId?: string;
+  serviceId?: string;
+  categoryId?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+}
+
+export interface EvaluateDiscountDto {
+  patientId?: string;
+  patientAge?: number;
+  patientGender?: string;
+  items: Array<{
+    serviceId?: string;
+    itemName?: string;
+    category?: string;
+    categoryId?: string;
+    unitPrice: number;
+    quantity: number;
+  }>;
 }
 
 export interface InvoiceCartItemDto {
@@ -20,6 +94,8 @@ export interface InvoiceCartItemDto {
   category: string;
   unitPrice: number;
   quantity: number;
+  discountCampaignId?: string;
+  discountAmount?: number;
 }
 
 export interface CreateInvoiceDto {
@@ -46,12 +122,93 @@ export class BillingService {
   constructor(private prisma: PrismaService) {}
 
   // ---------------------------------------------
+  // DYNAMIC SERVICE CATEGORIES
+  // ---------------------------------------------
+  async getCategories(status?: string) {
+    const where: any = { deleted_at: null };
+    if (status && status !== 'ALL') {
+      where.status = status;
+    } else if (!status) {
+      where.status = 'ACTIVE';
+    }
+    return this.prisma.serviceCategory.findMany({
+      where,
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async createCategory(dto: CreateServiceCategoryDto, userId?: string) {
+    const code = dto.code.toUpperCase().trim();
+    const existing = await this.prisma.serviceCategory.findUnique({
+      where: { code },
+    });
+    if (existing) {
+      throw new BadRequestException(`Category code ${dto.code} already exists`);
+    }
+    return this.prisma.serviceCategory.create({
+      data: {
+        code,
+        name: dto.name.trim(),
+        description: dto.description?.trim(),
+        status: dto.status || 'ACTIVE',
+        created_by: userId,
+      },
+    });
+  }
+
+  async updateCategory(id: string, dto: UpdateServiceCategoryDto, userId?: string) {
+    const existing = await this.prisma.serviceCategory.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException('Category not found');
+    }
+    const data: any = { updated_by: userId };
+    if (dto.name !== undefined) data.name = dto.name.trim();
+    if (dto.code !== undefined) data.code = dto.code.toUpperCase().trim();
+    if (dto.description !== undefined) data.description = dto.description?.trim();
+    if (dto.status !== undefined) data.status = dto.status;
+
+    return this.prisma.serviceCategory.update({
+      where: { id },
+      data,
+    });
+  }
+
+  async deleteCategory(id: string, userId?: string) {
+    const existing = await this.prisma.serviceCategory.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException('Category not found');
+    }
+    return this.prisma.serviceCategory.update({
+      where: { id },
+      data: {
+        status: 'INACTIVE',
+        deleted_at: new Date(),
+        updated_by: userId,
+      },
+    });
+  }
+
+  // ---------------------------------------------
   // SERVICE CATALOG
   // ---------------------------------------------
-  async getServices(centerId: string, category?: string, search?: string) {
-    const where: any = { center_id: centerId, status: 'ACTIVE' };
-    if (category) {
-      where.category = category;
+  async getServices(
+    centerId: string,
+    category?: string,
+    search?: string,
+    status?: string,
+  ) {
+    const where: any = { center_id: centerId, deleted_at: null };
+    if (status && status !== 'ALL') {
+      where.status = status;
+    } else if (!status) {
+      where.status = 'ACTIVE';
+    }
+    if (category && category !== 'ALL') {
+      where.category = { equals: category, mode: 'insensitive' };
     }
     if (search) {
       where.OR = [
@@ -61,16 +218,20 @@ export class BillingService {
     }
     return this.prisma.serviceCatalog.findMany({
       where,
+      include: {
+        category_rel: true,
+      },
       orderBy: [{ category: 'asc' }, { name: 'asc' }],
     });
   }
 
   async createService(centerId: string, dto: CreateServiceCatalogDto, userId?: string) {
+    const code = dto.code.toUpperCase().trim();
     const existing = await this.prisma.serviceCatalog.findUnique({
       where: {
         center_id_code: {
           center_id: centerId,
-          code: dto.code.toUpperCase().trim(),
+          code,
         },
       },
     });
@@ -82,15 +243,263 @@ export class BillingService {
     return this.prisma.serviceCatalog.create({
       data: {
         center_id: centerId,
-        code: dto.code.toUpperCase().trim(),
+        code,
         name: dto.name.trim(),
-        category: dto.category,
+        category: dto.category.trim(),
+        category_id: dto.categoryId || null,
         price: new Prisma.Decimal(dto.price),
         tax_rate: new Prisma.Decimal(dto.taxRate || 0),
-        status: 'ACTIVE',
+        status: dto.status || 'ACTIVE',
         created_by: userId,
       },
+      include: { category_rel: true },
     });
+  }
+
+  async updateService(
+    id: string,
+    centerId: string,
+    dto: UpdateServiceCatalogDto,
+    userId?: string,
+  ) {
+    const existing = await this.prisma.serviceCatalog.findFirst({
+      where: { id, center_id: centerId },
+    });
+    if (!existing) {
+      throw new NotFoundException('Service not found at this center');
+    }
+
+    const data: any = { updated_by: userId };
+    if (dto.name !== undefined) data.name = dto.name.trim();
+    if (dto.code !== undefined) data.code = dto.code.toUpperCase().trim();
+    if (dto.category !== undefined) data.category = dto.category.trim();
+    if (dto.categoryId !== undefined) data.category_id = dto.categoryId || null;
+    if (dto.price !== undefined) data.price = new Prisma.Decimal(dto.price);
+    if (dto.taxRate !== undefined) data.tax_rate = new Prisma.Decimal(dto.taxRate);
+    if (dto.status !== undefined) data.status = dto.status;
+
+    return this.prisma.serviceCatalog.update({
+      where: { id },
+      data,
+      include: { category_rel: true },
+    });
+  }
+
+  async deleteService(id: string, centerId: string, userId?: string) {
+    const existing = await this.prisma.serviceCatalog.findFirst({
+      where: { id, center_id: centerId },
+    });
+    if (!existing) {
+      throw new NotFoundException('Service not found at this center');
+    }
+
+    return this.prisma.serviceCatalog.update({
+      where: { id },
+      data: {
+        status: 'INACTIVE',
+        deleted_at: new Date(),
+        updated_by: userId,
+      },
+    });
+  }
+
+  // ---------------------------------------------
+  // DISCOUNT CAMPAIGN MODULE
+  // ---------------------------------------------
+  async getDiscountCampaigns(centerId?: string, status?: string) {
+    const where: any = { deleted_at: null };
+    if (status && status !== 'ALL') {
+      where.status = status;
+    }
+    if (centerId) {
+      where.OR = [
+        { center_id: null },
+        { center_id: centerId },
+      ];
+    }
+    return this.prisma.discountCampaign.findMany({
+      where,
+      include: {
+        service: true,
+        category: true,
+      },
+      orderBy: { created_at: 'desc' },
+    });
+  }
+
+  async createDiscountCampaign(dto: CreateDiscountCampaignDto, userId?: string) {
+    return this.prisma.discountCampaign.create({
+      data: {
+        name: dto.name.trim(),
+        code: dto.code?.toUpperCase().trim() || null,
+        description: dto.description?.trim() || null,
+        discount_type: dto.discountType || 'PERCENTAGE',
+        discount_value: new Prisma.Decimal(dto.discountValue),
+        min_age: dto.minAge !== undefined && dto.minAge !== null ? Number(dto.minAge) : null,
+        max_age: dto.maxAge !== undefined && dto.maxAge !== null ? Number(dto.maxAge) : null,
+        gender: dto.gender && dto.gender !== 'ALL' ? dto.gender.toUpperCase() : null,
+        center_id: dto.centerId || null,
+        service_id: dto.serviceId || null,
+        category_id: dto.categoryId || null,
+        start_date: dto.startDate ? new Date(dto.startDate) : null,
+        end_date: dto.endDate ? new Date(dto.endDate) : null,
+        status: dto.status || 'ACTIVE',
+        created_by: userId,
+      },
+      include: {
+        service: true,
+        category: true,
+        center: true,
+      },
+    });
+  }
+
+  async updateDiscountCampaign(id: string, dto: UpdateDiscountCampaignDto, userId?: string) {
+    const existing = await this.prisma.discountCampaign.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException('Discount campaign not found');
+    }
+
+    const data: any = { updated_by: userId };
+    if (dto.name !== undefined) data.name = dto.name.trim();
+    if (dto.code !== undefined) data.code = dto.code ? dto.code.toUpperCase().trim() : null;
+    if (dto.description !== undefined) data.description = dto.description?.trim();
+    if (dto.discountType !== undefined) data.discount_type = dto.discountType;
+    if (dto.discountValue !== undefined) data.discount_value = new Prisma.Decimal(dto.discountValue);
+    if (dto.minAge !== undefined) data.min_age = dto.minAge !== null ? Number(dto.minAge) : null;
+    if (dto.maxAge !== undefined) data.max_age = dto.maxAge !== null ? Number(dto.maxAge) : null;
+    if (dto.gender !== undefined) data.gender = dto.gender && dto.gender !== 'ALL' ? dto.gender.toUpperCase() : null;
+    if (dto.centerId !== undefined) data.center_id = dto.centerId || null;
+    if (dto.serviceId !== undefined) data.service_id = dto.serviceId || null;
+    if (dto.categoryId !== undefined) data.category_id = dto.categoryId || null;
+    if (dto.startDate !== undefined) data.start_date = dto.startDate ? new Date(dto.startDate) : null;
+    if (dto.endDate !== undefined) data.end_date = dto.endDate ? new Date(dto.endDate) : null;
+    if (dto.status !== undefined) data.status = dto.status;
+
+    return this.prisma.discountCampaign.update({
+      where: { id },
+      data,
+      include: {
+        service: true,
+        category: true,
+      },
+    });
+  }
+
+  async deleteDiscountCampaign(id: string, userId?: string) {
+    const existing = await this.prisma.discountCampaign.findUnique({
+      where: { id },
+    });
+    if (!existing) {
+      throw new NotFoundException('Discount campaign not found');
+    }
+    return this.prisma.discountCampaign.update({
+      where: { id },
+      data: {
+        status: 'INACTIVE',
+        deleted_at: new Date(),
+        updated_by: userId,
+      },
+    });
+  }
+
+  async evaluateDiscountCampaigns(centerId: string, dto: EvaluateDiscountDto) {
+    const now = new Date();
+    const where: any = {
+      status: 'ACTIVE',
+      deleted_at: null,
+      OR: [
+        { center_id: null },
+        { center_id: centerId },
+      ],
+    };
+
+    const campaigns = await this.prisma.discountCampaign.findMany({
+      where,
+      include: {
+        service: true,
+        category: true,
+      },
+    });
+
+    const evaluatedItems = dto.items.map((item) => {
+      let bestCampaign: any = null;
+      let maxDiscount = 0;
+
+      for (const camp of campaigns) {
+        // Date check
+        if (camp.start_date && now < new Date(camp.start_date)) continue;
+        if (camp.end_date && now > new Date(camp.end_date)) continue;
+
+        // Age check
+        if (dto.patientAge !== undefined && dto.patientAge !== null) {
+          if (camp.min_age !== null && dto.patientAge < camp.min_age) continue;
+          if (camp.max_age !== null && dto.patientAge > camp.max_age) continue;
+        } else if (camp.min_age !== null || camp.max_age !== null) {
+          continue;
+        }
+
+        // Gender check
+        if (camp.gender && camp.gender !== 'ALL') {
+          if (!dto.patientGender || dto.patientGender.toUpperCase() !== camp.gender.toUpperCase()) {
+            continue;
+          }
+        }
+
+        // Service check
+        if (camp.service_id && item.serviceId && camp.service_id !== item.serviceId) {
+          continue;
+        }
+
+        // Category check
+        if (camp.category_id) {
+          if (item.categoryId && camp.category_id !== item.categoryId) {
+            continue;
+          }
+          if (!item.categoryId && camp.category?.code) {
+            if (item.category?.toUpperCase() !== camp.category.code.toUpperCase()) {
+              continue;
+            }
+          }
+        }
+
+        // Calculate discount
+        const lineTotal = item.unitPrice * item.quantity;
+        let discount = 0;
+        if (camp.discount_type === 'PERCENTAGE') {
+          discount = (lineTotal * Number(camp.discount_value)) / 100;
+        } else {
+          discount = Math.min(lineTotal, Number(camp.discount_value));
+        }
+
+        if (discount > maxDiscount) {
+          maxDiscount = discount;
+          bestCampaign = camp;
+        }
+      }
+
+      return {
+        ...item,
+        appliedCampaign: bestCampaign ? {
+          id: bestCampaign.id,
+          name: bestCampaign.name,
+          code: bestCampaign.code,
+          discountType: bestCampaign.discount_type,
+          discountValue: Number(bestCampaign.discount_value),
+        } : null,
+        discountAmount: maxDiscount,
+        finalPrice: Math.max(0, (item.unitPrice * item.quantity) - maxDiscount),
+      };
+    });
+
+    const totalSavings = evaluatedItems.reduce((acc, it) => acc + it.discountAmount, 0);
+
+    return {
+      items: evaluatedItems,
+      totalSavings,
+    };
   }
 
   // ---------------------------------------------
@@ -123,29 +532,36 @@ export class BillingService {
     // Calculate totals
     let subtotal = 0;
     let taxTotal = 0;
+    let totalItemCampaignDiscounts = 0;
 
     const invoiceItemsData = dto.items.map((item) => {
-      const lineTotal = item.unitPrice * item.quantity;
-      subtotal += lineTotal;
-      // standard tax calculation if applicable
+      const lineSubtotal = item.unitPrice * item.quantity;
+      const itemDiscount = item.discountAmount || 0;
+      totalItemCampaignDiscounts += itemDiscount;
+      const lineTotal = Math.max(0, lineSubtotal - itemDiscount);
+      subtotal += lineSubtotal;
+
       return {
         center_id: centerId,
         service_id: item.serviceId || null,
+        discount_campaign_id: item.discountCampaignId || null,
         item_name: item.itemName,
         category: item.category,
         unit_price: new Prisma.Decimal(item.unitPrice),
         quantity: item.quantity,
+        discount_amount: new Prisma.Decimal(itemDiscount),
         total_price: new Prisma.Decimal(lineTotal),
         is_queued: true,
       };
     });
 
-    let discountAmount = dto.discountAmount || 0;
+    let extraDiscount = dto.discountAmount || 0;
     if (dto.discountPercent && dto.discountPercent > 0) {
-      discountAmount = (subtotal * dto.discountPercent) / 100;
+      extraDiscount = (subtotal * dto.discountPercent) / 100;
     }
+    const finalTotalDiscount = totalItemCampaignDiscounts + extraDiscount;
 
-    const totalAmount = Math.max(0, subtotal - discountAmount + taxTotal);
+    const totalAmount = Math.max(0, subtotal - finalTotalDiscount + taxTotal);
     const paidAmount = dto.paidAmount !== undefined ? dto.paidAmount : totalAmount;
     const balanceAmount = Math.max(0, totalAmount - paidAmount);
     const paymentStatus =
@@ -161,7 +577,7 @@ export class BillingService {
           patient_id: dto.patientId,
           cashier_id: cashierId,
           subtotal: new Prisma.Decimal(subtotal),
-          discount_amount: new Prisma.Decimal(discountAmount),
+          discount_amount: new Prisma.Decimal(finalTotalDiscount),
           discount_percent: new Prisma.Decimal(dto.discountPercent || 0),
           tax_amount: new Prisma.Decimal(taxTotal),
           total_amount: new Prisma.Decimal(totalAmount),
@@ -176,7 +592,11 @@ export class BillingService {
           },
         },
         include: {
-          items: true,
+          items: {
+            include: {
+              discount_campaign: true,
+            },
+          },
           patient: true,
         },
       });
@@ -193,6 +613,7 @@ export class BillingService {
             invoiceNumber,
             totalAmount,
             paidAmount,
+            campaignDiscounts: totalItemCampaignDiscounts,
             paymentMethod: dto.paymentMethod,
             itemCount: invoiceItemsData.length,
           }),
@@ -243,7 +664,11 @@ export class BillingService {
             phone: true,
           },
         },
-        items: true,
+        items: {
+          include: {
+            discount_campaign: true,
+          },
+        },
       },
     });
   }
@@ -253,7 +678,11 @@ export class BillingService {
       where: { id, center_id: centerId },
       include: {
         patient: true,
-        items: true,
+        items: {
+          include: {
+            discount_campaign: true,
+          },
+        },
         audit_logs: {
           orderBy: { created_at: 'desc' },
         },
@@ -512,7 +941,11 @@ export class BillingService {
       include: {
         center: true,
         patient: true,
-        items: true,
+        items: {
+          include: {
+            discount_campaign: true,
+          },
+        },
       },
     });
 
@@ -554,24 +987,28 @@ export class BillingService {
       const priceStr = Number(item.unit_price).toFixed(2);
       const totalStr = Number(item.total_price).toFixed(2);
       thermalText += `${item.item_name}\n`;
-      thermalText += row('', `${item.quantity} x $${priceStr}  $${totalStr}`) + '\n';
+      let lineSub = `${item.quantity} x tk ${priceStr}  tk ${totalStr}`;
+      if (item.discount_campaign) {
+        lineSub += ` [${item.discount_campaign.name}]`;
+      }
+      thermalText += row('', lineSub) + '\n';
     });
 
     thermalText += divider + '\n';
-    thermalText += row('SUBTOTAL:', `$${Number(invoice.subtotal).toFixed(2)}`) + '\n';
+    thermalText += row('SUBTOTAL:', `tk ${Number(invoice.subtotal).toFixed(2)}`) + '\n';
     if (Number(invoice.discount_amount) > 0) {
-      thermalText += row('DISCOUNT:', `-$${Number(invoice.discount_amount).toFixed(2)}`) + '\n';
+      thermalText += row('DISCOUNT:', `-tk ${Number(invoice.discount_amount).toFixed(2)}`) + '\n';
     }
     thermalText += doubleDivider + '\n';
-    thermalText += row('TOTAL AMOUNT:', `$${Number(invoice.total_amount).toFixed(2)}`) + '\n';
-    thermalText += row('PAID AMOUNT:', `$${Number(invoice.paid_amount).toFixed(2)}`) + '\n';
+    thermalText += row('TOTAL AMOUNT:', `tk ${Number(invoice.total_amount).toFixed(2)}`) + '\n';
+    thermalText += row('PAID AMOUNT:', `tk ${Number(invoice.paid_amount).toFixed(2)}`) + '\n';
     if (Number(invoice.balance_amount) > 0) {
-      thermalText += row('BALANCE DUE:', `$${Number(invoice.balance_amount).toFixed(2)}`) + '\n';
+      thermalText += row('BALANCE DUE:', `tk ${Number(invoice.balance_amount).toFixed(2)}`) + '\n';
     }
     thermalText += divider + '\n';
     thermalText += `Payment Mode: ${invoice.payment_method}  | Status: ${invoice.payment_status}\n`;
     thermalText += centerAlign('*** THANK YOU FOR VISITING ***') + '\n';
-    thermalText += centerAlign('Aegis Enterprise HIS v2.0') + '\n';
+    thermalText += centerAlign('CareWave HIS v2.0') + '\n';
 
     return {
       invoice,

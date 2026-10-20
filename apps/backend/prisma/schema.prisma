@@ -42,6 +42,8 @@ model Center {
   prescriptions       Prescription[]
   prescription_items  PrescriptionItem[]
   diagnostic_reports  DiagnosticReport[]
+  service_categories  ServiceCategory[]
+  discount_campaigns  DiscountCampaign[]
 
   @@map("centers")
 }
@@ -252,12 +254,35 @@ model Patient {
 // ----------------------------------------------------
 // 5. SERVICE & BILLING POS
 // ----------------------------------------------------
+model ServiceCategory {
+  id          String    @id @default(uuid())
+  center_id   String?
+  code        String    @unique // e.g. USG, PROCEDURE, LAB_TEST, CONSULTATION, EYE
+  name        String    // e.g. "Ultrasonography (USG)", "General Consultation"
+  description String?
+  status      String    @default("ACTIVE") // ACTIVE, INACTIVE
+
+  // Audit & Soft Delete
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+  created_by  String?
+  updated_by  String?
+
+  center      Center?            @relation(fields: [center_id], references: [id])
+  services    ServiceCatalog[]
+  campaigns   DiscountCampaign[]
+
+  @@map("service_categories")
+}
+
 model ServiceCatalog {
   id          String   @id @default(uuid())
   center_id   String
   code        String
   name        String
-  category    String   // CONSULTATION, LAB_TEST, USG, RADIOLOGY, PROCEDURE
+  category    String   // CONSULTATION, LAB_TEST, USG, RADIOLOGY, PROCEDURE, EYE
+  category_id String?
   price       Decimal  @db.Decimal(10, 2)
   tax_rate    Decimal  @default(0.00) @db.Decimal(5, 2)
   status      String   @default("ACTIVE") // ACTIVE, INACTIVE
@@ -269,11 +294,47 @@ model ServiceCatalog {
   created_by  String?
   updated_by  String?
 
-  center        Center        @relation(fields: [center_id], references: [id])
-  invoice_items InvoiceItem[]
+  center             Center             @relation(fields: [center_id], references: [id])
+  category_rel       ServiceCategory?   @relation(fields: [category_id], references: [id])
+  invoice_items      InvoiceItem[]
+  discount_campaigns DiscountCampaign[]
 
   @@unique([center_id, code])
   @@map("service_catalog")
+}
+
+model DiscountCampaign {
+  id             String    @id @default(uuid())
+  center_id      String?
+  name           String    // e.g. "Senior Citizens Male Discount"
+  code           String?   // optional promo code e.g. SENIOR60
+  description    String?
+  discount_type  String    @default("PERCENTAGE") // PERCENTAGE, FIXED_AMOUNT
+  discount_value Decimal   @db.Decimal(10, 2)
+
+  // Eligibility Rules
+  min_age        Int?      // e.g. 60
+  max_age        Int?
+  gender         String?   // 'MALE', 'FEMALE', 'OTHER' (or null for ANY)
+  service_id     String?   // optional specific service
+  category_id    String?   // optional specific category
+  start_date     DateTime?
+  end_date       DateTime?
+  status         String    @default("ACTIVE") // ACTIVE, INACTIVE
+
+  // Audit & Soft Delete
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  deleted_at     DateTime?
+  created_by     String?
+  updated_by     String?
+
+  center         Center?          @relation(fields: [center_id], references: [id])
+  service        ServiceCatalog?  @relation(fields: [service_id], references: [id])
+  category       ServiceCategory? @relation(fields: [category_id], references: [id])
+  invoice_items  InvoiceItem[]
+
+  @@map("discount_campaigns")
 }
 
 model Invoice {
@@ -309,31 +370,34 @@ model Invoice {
 }
 
 model InvoiceItem {
-  id          String   @id @default(uuid())
-  center_id   String
-  invoice_id  String
-  service_id  String?
-  item_name   String
-  category    String
-  unit_price  Decimal  @db.Decimal(10, 2)
-  quantity      Int       @default(1)
-  total_price   Decimal   @db.Decimal(10, 2)
-  is_queued     Boolean   @default(true) // Patient Queue flag: true = in queue, false = completed/out
-  is_refunded   Boolean   @default(false)
-  refund_reason String?
-  refunded_at   DateTime?
-  refunded_by   String?
+  id                   String   @id @default(uuid())
+  center_id            String
+  invoice_id           String
+  service_id           String?
+  discount_campaign_id String?
+  item_name            String
+  category             String
+  unit_price           Decimal  @db.Decimal(10, 2)
+  quantity             Int      @default(1)
+  discount_amount      Decimal  @default(0.00) @db.Decimal(10, 2)
+  total_price          Decimal  @db.Decimal(10, 2)
+  is_queued            Boolean  @default(true) // Patient Queue flag: true = in queue, false = completed/out
+  is_refunded          Boolean  @default(false)
+  refund_reason        String?
+  refunded_at          DateTime?
+  refunded_by          String?
 
   // Audit & Soft Delete
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
-  deleted_at  DateTime?
-  created_by  String?
-  updated_by  String?
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+  deleted_at           DateTime?
+  created_by           String?
+  updated_by           String?
 
-  center      Center          @relation(fields: [center_id], references: [id])
-  invoice     Invoice         @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
-  service     ServiceCatalog? @relation(fields: [service_id], references: [id])
+  center               Center            @relation(fields: [center_id], references: [id])
+  invoice              Invoice           @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  service              ServiceCatalog?   @relation(fields: [service_id], references: [id])
+  discount_campaign    DiscountCampaign? @relation(fields: [discount_campaign_id], references: [id])
 
   @@map("invoice_items")
 }

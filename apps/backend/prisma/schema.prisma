@@ -44,6 +44,8 @@ model Center {
   diagnostic_reports  DiagnosticReport[]
   service_categories  ServiceCategory[]
   discount_campaigns  DiscountCampaign[]
+  referral_commission_rules ReferralCommissionRule[]
+  referral_commissions      ReferralCommission[]
 
   @@map("centers")
 }
@@ -160,7 +162,9 @@ model Employee {
   user          User          @relation(fields: [user_id], references: [id])
   attendances   Attendance[]
   payrolls      Payroll[]
-  referred_patients Patient[] @relation("ReferredPatients")
+  referred_patients   Patient[]                  @relation("ReferredPatients")
+  commission_rules    ReferralCommissionRule[]
+  earned_commissions  ReferralCommission[]
 
   @@map("employees")
 }
@@ -245,8 +249,9 @@ model Patient {
   center            Center    @relation(fields: [center_id], references: [id])
   referred_by       Employee? @relation("ReferredPatients", fields: [referred_by_id], references: [id])
   invoices          Invoice[]
-  prescriptions     Prescription[]
+  prescriptions      Prescription[]
   diagnostic_reports DiagnosticReport[]
+  commissions        ReferralCommission[]
 
   @@map("patients")
 }
@@ -271,7 +276,8 @@ model ServiceCategory {
 
   center      Center?            @relation(fields: [center_id], references: [id])
   services    ServiceCatalog[]
-  campaigns   DiscountCampaign[]
+  campaigns          DiscountCampaign[]
+  commission_rules   ReferralCommissionRule[]
 
   @@map("service_categories")
 }
@@ -298,6 +304,7 @@ model ServiceCatalog {
   category_rel       ServiceCategory?   @relation(fields: [category_id], references: [id])
   invoice_items      InvoiceItem[]
   discount_campaigns DiscountCampaign[]
+  commission_rules   ReferralCommissionRule[]
 
   @@unique([center_id, code])
   @@map("service_catalog")
@@ -365,6 +372,7 @@ model Invoice {
   patient          Patient           @relation(fields: [patient_id], references: [id])
   items            InvoiceItem[]
   audit_logs       InvoiceAuditLog[]
+  commissions      ReferralCommission[]
 
   @@map("invoices")
 }
@@ -398,6 +406,7 @@ model InvoiceItem {
   invoice              Invoice           @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
   service              ServiceCatalog?   @relation(fields: [service_id], references: [id])
   discount_campaign    DiscountCampaign? @relation(fields: [discount_campaign_id], references: [id])
+  commissions          ReferralCommission[]
 
   @@map("invoice_items")
 }
@@ -421,6 +430,60 @@ model InvoiceAuditLog {
   invoice      Invoice   @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
 
   @@map("invoice_audit_logs")
+}
+
+model ReferralCommissionRule {
+  id               String          @id @default(uuid())
+  center_id        String
+  employee_id      String?         // null = applies to all employees
+  service_id       String?         // null = applies to all or category
+  category_id      String?         // optional specific category
+  commission_type  String          @default("PERCENTAGE") // PERCENTAGE, FIXED_AMOUNT
+  commission_value Decimal         @db.Decimal(10, 2)
+  status           String          @default("ACTIVE") // ACTIVE, INACTIVE
+
+  created_at       DateTime        @default(now())
+  updated_at       DateTime        @updatedAt
+  deleted_at       DateTime?
+  created_by       String?
+  updated_by       String?
+
+  center           Center          @relation(fields: [center_id], references: [id])
+  employee         Employee?       @relation(fields: [employee_id], references: [id])
+  service          ServiceCatalog? @relation(fields: [service_id], references: [id])
+  category         ServiceCategory? @relation(fields: [category_id], references: [id])
+
+  @@map("referral_commission_rules")
+}
+
+model ReferralCommission {
+  id                 String          @id @default(uuid())
+  center_id          String
+  invoice_id         String
+  invoice_item_id    String?
+  patient_id         String
+  employee_id        String          // Referring employee
+  service_id         String?
+  category_id        String?
+  service_name       String
+  service_category   String
+  service_amount     Decimal         @db.Decimal(10, 2)
+  commission_type    String          // PERCENTAGE, FIXED_AMOUNT
+  commission_rate    Decimal         @db.Decimal(10, 2)
+  commission_amount  Decimal         @db.Decimal(10, 2)
+  status             String          @default("EARNED") // EARNED, PAID, CANCELLED
+
+  created_at         DateTime        @default(now())
+  updated_at         DateTime        @updatedAt
+  deleted_at         DateTime?
+
+  center             Center          @relation(fields: [center_id], references: [id])
+  invoice            Invoice         @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  invoice_item       InvoiceItem?    @relation(fields: [invoice_item_id], references: [id], onDelete: SetNull)
+  patient            Patient         @relation(fields: [patient_id], references: [id])
+  employee           Employee        @relation(fields: [employee_id], references: [id])
+
+  @@map("referral_commissions")
 }
 
 // ----------------------------------------------------

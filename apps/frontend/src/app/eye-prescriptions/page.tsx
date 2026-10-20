@@ -20,6 +20,8 @@ import {
   Sparkles,
   RefreshCw,
   Glasses,
+  Trash2,
+  Pill,
 } from 'lucide-react';
 import DateRangeFilter, {
   DateFilterValue,
@@ -67,11 +69,32 @@ interface EyePrescription {
   eye_data?: any;
 }
 
+interface MedicineCatalogItem {
+  id: string;
+  code?: string;
+  name: string;
+  generic_name?: string;
+  form: string;
+  strength: string;
+  price?: number | string;
+  status: string;
+}
+
+interface EyeDropRow {
+  medicineId: string;
+  medicineName: string;
+  dosage: string;
+  duration: string;
+  instructions: string;
+  isCustom?: boolean;
+}
+
 export default function EyePrescriptionsPage() {
   const { activeCenter, hasPermission } = useAuth();
   const [activeTab, setActiveTab] = useState<'queue' | 'history'>('queue');
   const [queue, setQueue] = useState<QueuedItem[]>([]);
   const [prescriptions, setPrescriptions] = useState<EyePrescription[]>([]);
+  const [medicines, setMedicines] = useState<MedicineCatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters for History Tab
@@ -117,9 +140,8 @@ export default function EyePrescriptionsPage() {
     follow_up_date: '',
   });
 
-  // Optional Medicine / Eye Drops
-  const [drops, setDrops] = useState<Array<{ name: string; dosage: string; duration: string; instructions: string }>>([]);
-  const [newDrop, setNewDrop] = useState({ name: '', dosage: '1 drop 3 times daily', duration: '7 days', instructions: 'Both eyes' });
+  // Prescribed Eye Drops / Lubricants
+  const [drops, setDrops] = useState<EyeDropRow[]>([]);
 
   useEffect(() => {
     if (activeCenter) {
@@ -130,6 +152,10 @@ export default function EyePrescriptionsPage() {
   const loadData = async () => {
     setLoading(true);
     try {
+      // Load medicines catalog
+      const medList = await apiRequest('/clinical/medicines').catch(() => []);
+      setMedicines(Array.isArray(medList) ? medList : []);
+
       if (activeTab === 'queue') {
         const qData = await apiRequest('/clinical/queue?category=EYE');
         setQueue(Array.isArray(qData) ? qData : []);
@@ -179,19 +205,84 @@ export default function EyePrescriptionsPage() {
     setExamModalOpen(true);
   };
 
-  const handleAddDrop = () => {
-    if (!newDrop.name.trim()) return;
-    setDrops([...drops, { ...newDrop }]);
-    setNewDrop({ name: '', dosage: '1 drop 3 times daily', duration: '7 days', instructions: 'Both eyes' });
+  const handleAddDropRow = () => {
+    // Prefer ophthalmic / DROPS / OINTMENT form medicine if available in catalog
+    const eyeMed =
+      medicines.find((m) => m.form === 'DROPS' || m.form === 'OINTMENT') ||
+      medicines[0];
+
+    setDrops((prev) => [
+      ...prev,
+      {
+        medicineId: eyeMed ? eyeMed.id : '',
+        medicineName: eyeMed ? `${eyeMed.name} (${eyeMed.strength})` : '',
+        dosage: '1 drop 3 times daily',
+        duration: '14 days',
+        instructions: 'Both eyes',
+        isCustom: !eyeMed,
+      },
+    ]);
   };
 
-  const handleRemoveDrop = (index: number) => {
-    setDrops(drops.filter((_, i) => i !== index));
+  const handleUpdateDropRow = (
+    index: number,
+    field: keyof EyeDropRow,
+    value: any,
+  ) => {
+    setDrops((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+
+      if (field === 'medicineId') {
+        if (value === 'custom') {
+          updated[index].isCustom = true;
+          updated[index].medicineName = '';
+        } else {
+          updated[index].isCustom = false;
+          const med = medicines.find((m) => m.id === value);
+          if (med) {
+            updated[index].medicineName = `${med.name} (${med.strength})`;
+          }
+        }
+      }
+      return updated;
+    });
+  };
+
+  const handleRemoveDropRow = (index: number) => {
+    setDrops((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const handleDownloadPdf = async (rxId: string, rxNumber?: string) => {
+    setDownloadingId(rxId);
+    try {
+      const blob = await apiRequest<Blob>(`/clinical/prescriptions/${rxId}/pdf`);
+      const blobUrl = window.URL.createObjectURL(
+        new Blob([blob], { type: 'application/pdf' }),
+      );
+      const printWindow = window.open(blobUrl, '_blank');
+      if (!printWindow) {
+        // Fallback if browser blocked popup
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.setAttribute('download', `${rxNumber || 'Eye-Prescription'}.pdf`);
+        document.body.appendChild(link);
+        link.click();
+        link.parentNode?.removeChild(link);
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to generate eye prescription PDF');
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const handleSubmitExam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedQueueItem) return;
+
     setSubmitting(true);
     setErrorMsg(null);
 
@@ -204,6 +295,32 @@ export default function EyePrescriptionsPage() {
         clinicalNotes: eyeExamForm.clinical_notes,
         followUpDate: eyeExamForm.follow_up_date || undefined,
         eyeData: {
+          od: {
+            distUcva: eyeExamForm.od_dist_ucva,
+            distBcva: eyeExamForm.od_dist_bcva,
+            nearUcva: eyeExamForm.od_near_ucva,
+            nearBcva: eyeExamForm.od_near_bcva,
+            sph: eyeExamForm.od_sph,
+            cyl: eyeExamForm.od_cyl,
+            axis: eyeExamForm.od_axis,
+            add: eyeExamForm.od_add,
+            iop: eyeExamForm.od_iop,
+          },
+          os: {
+            distUcva: eyeExamForm.os_dist_ucva,
+            distBcva: eyeExamForm.os_dist_bcva,
+            nearUcva: eyeExamForm.os_near_ucva,
+            nearBcva: eyeExamForm.os_near_bcva,
+            sph: eyeExamForm.os_sph,
+            cyl: eyeExamForm.os_cyl,
+            axis: eyeExamForm.os_axis,
+            add: eyeExamForm.os_add,
+            iop: eyeExamForm.os_iop,
+          },
+          lensRecommendation: eyeExamForm.lens_type,
+          slitLamp: eyeExamForm.slit_lamp,
+
+          // Flat keys for compatibility
           od_dist_ucva: eyeExamForm.od_dist_ucva,
           od_dist_bcva: eyeExamForm.od_dist_bcva,
           od_near_ucva: eyeExamForm.od_near_ucva,
@@ -228,12 +345,18 @@ export default function EyePrescriptionsPage() {
           fundus: eyeExamForm.fundus,
           lens_type: eyeExamForm.lens_type,
         },
-        items: drops.map((d) => ({
-          medicineName: d.name,
-          dosage: d.dosage,
-          duration: d.duration,
-          instructions: d.instructions,
-        })),
+        items: drops
+          .filter((d) => (d.medicineName && d.medicineName.trim()) || (d.medicineId && d.medicineId !== 'custom'))
+          .map((d) => {
+            const med = medicines.find((m) => m.id === d.medicineId);
+            return {
+              medicineId: d.medicineId && d.medicineId !== 'custom' ? d.medicineId : undefined,
+              medicineName: d.medicineName || (med ? `${med.name} (${med.strength})` : 'Eye Drop'),
+              dosage: d.dosage || '1 drop 3 times daily',
+              duration: d.duration || '14 days',
+              instructions: d.instructions || 'Both eyes',
+            };
+          }),
       };
 
       const res = await apiRequest('/clinical/prescriptions', {
@@ -242,9 +365,9 @@ export default function EyePrescriptionsPage() {
       });
 
       setExamModalOpen(false);
-      // Trigger PDF view
+      // Automatically trigger authenticated PDF preview/download
       if (res && res.id) {
-        window.open(`/api/clinical/prescriptions/${res.id}/pdf`, '_blank');
+        handleDownloadPdf(res.id, res.prescription_number);
       }
       loadData();
     } catch (err: any) {
@@ -252,10 +375,6 @@ export default function EyePrescriptionsPage() {
     } finally {
       setSubmitting(false);
     }
-  };
-
-  const handleDownloadPdf = (rxId: string) => {
-    window.open(`/api/clinical/prescriptions/${rxId}/pdf`, '_blank');
   };
 
   // Filtered Prescriptions History
@@ -493,12 +612,17 @@ export default function EyePrescriptionsPage() {
                         </td>
                         <td className="py-3 px-4 text-right">
                           <button
-                            onClick={() => handleDownloadPdf(rx.id)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card hover:bg-muted px-2.5 py-1 text-xs font-semibold text-foreground transition-colors shadow-sm"
+                            disabled={downloadingId === rx.id}
+                            onClick={() => handleDownloadPdf(rx.id, rx.prescription_number)}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card hover:bg-muted px-2.5 py-1 text-xs font-semibold text-foreground transition-colors shadow-sm disabled:opacity-50"
                             title="Print Eye Prescription PDF"
                           >
-                            <Printer className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-                            <span>Print PDF</span>
+                            {downloadingId === rx.id ? (
+                              <RefreshCw className="h-3.5 w-3.5 animate-spin text-blue-600" />
+                            ) : (
+                              <Printer className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                            )}
+                            <span>{downloadingId === rx.id ? 'Loading...' : 'Print PDF'}</span>
                           </button>
                         </td>
                       </tr>
@@ -776,70 +900,166 @@ export default function EyePrescriptionsPage() {
                 </div>
               </div>
 
-              {/* Eye Drops / Medication Section */}
-              <div className="rounded-xl border border-border p-3.5 space-y-3 bg-muted/10">
+              {/* Prescribed Eye Drops / Lubricants Section */}
+              <div className="rounded-xl border border-border p-4 space-y-3 bg-muted/15 shadow-xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-foreground">
-                    Prescribed Eye Drops / Lubricants ({drops.length})
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
-                  <input
-                    type="text"
-                    placeholder="Medicine / Drop Name"
-                    value={newDrop.name}
-                    onChange={(e) => setNewDrop({ ...newDrop, name: e.target.value })}
-                    className="rounded border border-input bg-background px-2.5 py-1.5 text-xs text-foreground outline-none sm:col-span-1"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Dosage (e.g. 1 drop 3x daily)"
-                    value={newDrop.dosage}
-                    onChange={(e) => setNewDrop({ ...newDrop, dosage: e.target.value })}
-                    className="rounded border border-input bg-background px-2.5 py-1.5 text-xs text-foreground outline-none"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Duration (e.g. 14 days)"
-                    value={newDrop.duration}
-                    onChange={(e) => setNewDrop({ ...newDrop, duration: e.target.value })}
-                    className="rounded border border-input bg-background px-2.5 py-1.5 text-xs text-foreground outline-none"
-                  />
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      placeholder="Instructions"
-                      value={newDrop.instructions}
-                      onChange={(e) => setNewDrop({ ...newDrop, instructions: e.target.value })}
-                      className="flex-1 rounded border border-input bg-background px-2.5 py-1.5 text-xs text-foreground outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddDrop}
-                      className="rounded bg-blue-600 hover:bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white shadow-sm"
-                    >
-                      Add
-                    </button>
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
+                      <Pill className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-foreground">
+                        Prescribed Eye Drops / Lubricants ({drops.length})
+                      </span>
+                      <p className="text-[10px] text-muted-foreground">
+                        Select from hospital medicine catalog or specify custom ophthalmic drops
+                      </p>
+                    </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={handleAddDropRow}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors shadow-xs"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Add Eye Drop / Medicine</span>
+                  </button>
                 </div>
 
-                {drops.length > 0 && (
-                  <div className="space-y-1.5 pt-2">
-                    {drops.map((d, idx) => (
+                {drops.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-border/80 bg-background/50 py-5 text-center">
+                    <p className="text-xs text-muted-foreground">
+                      No eye drops or medications added.{' '}
+                      <button
+                        type="button"
+                        onClick={handleAddDropRow}
+                        className="font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        Click here
+                      </button>{' '}
+                      to select medicine from the medicine table.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2 pt-1">
+                    {drops.map((item, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center justify-between gap-2 rounded bg-card border border-border px-3 py-1.5 text-xs"
+                        className="grid grid-cols-12 gap-2 items-start rounded-lg border border-border p-2.5 bg-background shadow-xs"
                       >
-                        <span className="font-semibold text-foreground">{d.name}</span>
-                        <span className="text-muted-foreground">{d.dosage} · {d.duration} · {d.instructions}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveDrop(idx)}
-                          className="text-red-500 hover:text-red-700"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
+                        {/* Medicine Catalog Dropdown */}
+                        <div className="col-span-12 sm:col-span-4 space-y-1">
+                          <label className="text-[10px] font-medium text-muted-foreground block">
+                            Medicine Table
+                          </label>
+                          <select
+                            value={item.isCustom ? 'custom' : item.medicineId}
+                            onChange={(e) =>
+                              handleUpdateDropRow(idx, 'medicineId', e.target.value)
+                            }
+                            className="w-full rounded border border-input bg-card px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary"
+                          >
+                            <option value="">-- Select from Medicine Catalog --</option>
+                            {/* Eye Drops & Ophthalmic optgroup */}
+                            {medicines.some((m) => m.form === 'DROPS' || m.form === 'OINTMENT') && (
+                              <optgroup label="👁️ Eye Drops & Ophthalmic">
+                                {medicines
+                                  .filter((m) => m.form === 'DROPS' || m.form === 'OINTMENT')
+                                  .map((m) => (
+                                    <option key={m.id} value={m.id}>
+                                      {m.name} ({m.strength}) - {m.form}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                            )}
+                            {/* Other General Medications */}
+                            {medicines.some((m) => m.form !== 'DROPS' && m.form !== 'OINTMENT') && (
+                              <optgroup label="💊 Other Hospital Medicines">
+                                {medicines
+                                  .filter((m) => m.form !== 'DROPS' && m.form !== 'OINTMENT')
+                                  .map((m) => (
+                                    <option key={m.id} value={m.id}>
+                                      {m.name} ({m.strength}) - {m.form}
+                                    </option>
+                                  ))}
+                              </optgroup>
+                            )}
+                            <option value="custom">✍️ Custom / Unlisted Medicine</option>
+                          </select>
+
+                          {item.isCustom && (
+                            <input
+                              type="text"
+                              value={item.medicineName}
+                              onChange={(e) =>
+                                handleUpdateDropRow(idx, 'medicineName', e.target.value)
+                              }
+                              placeholder="Type eye drop name & strength..."
+                              className="mt-1.5 w-full rounded border border-blue-400/60 bg-blue-50/30 dark:bg-blue-950/20 px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:ring-1 focus:ring-blue-500"
+                              autoFocus
+                            />
+                          )}
+                        </div>
+
+                        {/* Dosage */}
+                        <div className="col-span-6 sm:col-span-2 space-y-1">
+                          <label className="text-[10px] font-medium text-muted-foreground block">
+                            Dosage
+                          </label>
+                          <input
+                            type="text"
+                            value={item.dosage}
+                            onChange={(e) =>
+                              handleUpdateDropRow(idx, 'dosage', e.target.value)
+                            }
+                            placeholder="1 drop 3x daily"
+                            className="w-full rounded border border-input bg-card px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+
+                        {/* Duration */}
+                        <div className="col-span-6 sm:col-span-2 space-y-1">
+                          <label className="text-[10px] font-medium text-muted-foreground block">
+                            Duration
+                          </label>
+                          <input
+                            type="text"
+                            value={item.duration}
+                            onChange={(e) =>
+                              handleUpdateDropRow(idx, 'duration', e.target.value)
+                            }
+                            placeholder="14 days"
+                            className="w-full rounded border border-input bg-card px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+
+                        {/* Instructions */}
+                        <div className="col-span-10 sm:col-span-3 space-y-1">
+                          <label className="text-[10px] font-medium text-muted-foreground block">
+                            Instructions
+                          </label>
+                          <input
+                            type="text"
+                            value={item.instructions}
+                            onChange={(e) =>
+                              handleUpdateDropRow(idx, 'instructions', e.target.value)
+                            }
+                            placeholder="Both eyes / Right eye (OD)"
+                            className="w-full rounded border border-input bg-card px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary"
+                          />
+                        </div>
+
+                        {/* Remove Action */}
+                        <div className="col-span-2 sm:col-span-1 flex justify-center pt-5 sm:pt-6">
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDropRow(idx)}
+                            className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                            title="Remove eye drop"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

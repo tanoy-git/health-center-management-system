@@ -22,6 +22,8 @@ import {
   FlaskConical,
   Eye,
   CheckCircle2,
+  Award,
+  Percent,
 } from 'lucide-react';
 import DateRangeFilter, {
   DateFilterValue,
@@ -40,7 +42,7 @@ export default function ReportsPage() {
   });
 
   const [loading, setLoading] = useState(true);
-  const [activeReportTab, setActiveReportTab] = useState<'financial' | 'services' | 'clinical' | 'refunds'>('financial');
+  const [activeReportTab, setActiveReportTab] = useState<'financial' | 'services' | 'clinical' | 'refunds' | 'commissions'>('financial');
 
   // Raw data fetched from APIs
   const [invoices, setInvoices] = useState<any[]>([]);
@@ -48,6 +50,9 @@ export default function ReportsPage() {
   const [diagnosticReports, setDiagnosticReports] = useState<any[]>([]);
   const [refunds, setRefunds] = useState<any[]>([]);
   const [patients, setPatients] = useState<any[]>([]);
+  const [commissions, setCommissions] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
+  const [commissionEmployeeFilter, setCommissionEmployeeFilter] = useState('ALL');
 
   useEffect(() => {
     if (activeCenter) {
@@ -58,12 +63,14 @@ export default function ReportsPage() {
   const loadAllReportData = async () => {
     setLoading(true);
     try {
-      const [invData, rxData, diagData, refData, patData] = await Promise.all([
+      const [invData, rxData, diagData, refData, patData, commData, empData] = await Promise.all([
         apiRequest('/billing/invoices').catch(() => []),
         apiRequest('/clinical/prescriptions').catch(() => []),
         apiRequest('/diagnostics/reports').catch(() => []),
         apiRequest('/billing/refunds').catch(() => []),
         apiRequest('/patients').catch(() => []),
+        apiRequest('/billing/commissions').catch(() => []),
+        apiRequest('/hr/employees').catch(() => []),
       ]);
 
       setInvoices(Array.isArray(invData) ? invData : []);
@@ -71,6 +78,8 @@ export default function ReportsPage() {
       setDiagnosticReports(Array.isArray(diagData) ? diagData : []);
       setRefunds(Array.isArray(refData) ? refData : []);
       setPatients(Array.isArray(patData) ? patData : []);
+      setCommissions(Array.isArray(commData) ? commData : []);
+      setEmployees(Array.isArray(empData) ? empData : []);
     } catch (err) {
       console.error('Failed to load statistical reports data:', err);
     } finally {
@@ -98,6 +107,25 @@ export default function ReportsPage() {
   const filteredPatients = patients.filter((p) =>
     filterMatchesDate(p.created_at, dateFilter),
   );
+
+  const filteredCommissions = commissions.filter((c) => {
+    if (!filterMatchesDate(c.created_at, dateFilter)) return false;
+    if (commissionEmployeeFilter !== 'ALL' && c.employee_id !== commissionEmployeeFilter) {
+      return false;
+    }
+    return true;
+  });
+
+  const totalCommissionEarned = filteredCommissions.reduce(
+    (sum, c) => sum + Number(c.commission_amount || 0),
+    0,
+  );
+  const totalReferredRevenue = filteredCommissions.reduce(
+    (sum, c) => sum + Number(c.service_amount || 0),
+    0,
+  );
+  const uniqueReferredPatients = new Set(filteredCommissions.map((c) => c.patient_id)).size;
+  const uniqueReferringEmployees = new Set(filteredCommissions.map((c) => c.employee_id)).size;
 
   // Financial aggregates
   const totalGrossRevenue = filteredInvoices.reduce((sum, inv) => sum + Number(inv.subtotal || inv.total_amount || 0), 0);
@@ -337,6 +365,18 @@ export default function ReportsPage() {
         >
           <ShieldAlert className="h-3.5 w-3.5" />
           <span>Refund Audit Breakdown</span>
+        </button>
+
+        <button
+          onClick={() => setActiveReportTab('commissions')}
+          className={`flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-colors ${
+            activeReportTab === 'commissions'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          }`}
+        >
+          <Award className="h-3.5 w-3.5" />
+          <span>Reference Commission</span>
         </button>
       </div>
 
@@ -584,6 +624,192 @@ export default function ReportsPage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* TAB 5: REFERENCE COMMISSION */}
+      {activeReportTab === 'commissions' && (
+        <div className="space-y-6">
+          {/* Commission Overview KPI Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="rounded-xl border border-border bg-card p-4 shadow-sm space-y-1">
+              <p className="text-xs text-muted-foreground font-medium flex items-center justify-between">
+                <span>Total Commission Accrued</span>
+                <Award className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              </p>
+              <p className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                tk {totalCommissionEarned.toLocaleString()}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Payable / earned referral incentives
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border bg-card p-4 shadow-sm space-y-1">
+              <p className="text-xs text-muted-foreground font-medium flex items-center justify-between">
+                <span>Referred Billed Revenue</span>
+                <TrendingUp className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              </p>
+              <p className="text-2xl font-bold font-mono text-foreground">
+                tk {totalReferredRevenue.toLocaleString()}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Gross service volume from referrals
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border bg-card p-4 shadow-sm space-y-1">
+              <p className="text-xs text-muted-foreground font-medium flex items-center justify-between">
+                <span>Referred Patients</span>
+                <Users className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              </p>
+              <p className="text-2xl font-bold font-mono text-foreground">
+                {uniqueReferredPatients}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Distinct patients with reference
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border bg-card p-4 shadow-sm space-y-1">
+              <p className="text-xs text-muted-foreground font-medium flex items-center justify-between">
+                <span>Beneficiary Staff</span>
+                <Users className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+              </p>
+              <p className="text-2xl font-bold font-mono text-foreground">
+                {uniqueReferringEmployees}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                Employees earning commission
+              </p>
+            </div>
+          </div>
+
+          {/* Filter Bar & Detailed Ledger */}
+          <div className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/60">
+              <div>
+                <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+                  <Award className="h-4 w-4 text-blue-600" />
+                  <span>Service-Wise Referral Commission Ledger</span>
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Complete audit of employee referral earnings per billed service
+                </p>
+              </div>
+
+              {/* Filter by Employee */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">
+                  Staff Member:
+                </span>
+                <select
+                  value={commissionEmployeeFilter}
+                  onChange={(e) => setCommissionEmployeeFilter(e.target.value)}
+                  className="rounded-lg border border-input bg-card px-2.5 py-1.5 text-xs text-foreground outline-none focus:ring-2 focus:ring-primary cursor-pointer"
+                >
+                  <option value="ALL">All Referring Staff ({employees.length})</option>
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.user?.first_name} {emp.user?.last_name} ({emp.employee_code || 'EMP'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {filteredCommissions.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-border py-12 text-center space-y-2">
+                <Award className="mx-auto h-8 w-8 text-muted-foreground/50" />
+                <p className="text-xs font-semibold text-foreground">No referral commissions recorded</p>
+                <p className="text-[11px] text-muted-foreground max-w-sm mx-auto">
+                  When patients register with a referring employee and purchase services matching active commission rules, commissions will automatically be recorded here.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-muted/40 text-[11px] font-semibold text-muted-foreground border-b border-border">
+                    <tr>
+                      <th className="py-2.5 px-3">Date</th>
+                      <th className="py-2.5 px-3">Patient</th>
+                      <th className="py-2.5 px-3">Invoice #</th>
+                      <th className="py-2.5 px-3">Referring Employee</th>
+                      <th className="py-2.5 px-3">Service &amp; Category</th>
+                      <th className="py-2.5 px-3 font-mono">Service Billed</th>
+                      <th className="py-2.5 px-3">Rate / Rule</th>
+                      <th className="py-2.5 px-3 font-mono text-right">Commission Earned</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {filteredCommissions.map((c) => (
+                      <tr key={c.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="py-2.5 px-3 font-mono text-muted-foreground whitespace-nowrap">
+                          {new Date(c.created_at).toLocaleDateString([], {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <p className="font-semibold text-foreground">
+                            {c.patient?.first_name} {c.patient?.last_name}
+                          </p>
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            UHID: {c.patient?.uhid}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-blue-600 dark:text-blue-400 font-semibold">
+                          {c.invoice?.invoice_number || 'INV'}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <p className="font-semibold text-foreground">
+                            {c.employee?.user?.first_name} {c.employee?.user?.last_name}
+                          </p>
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            Code: {c.employee?.employee_code || 'EMP'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <p className="font-medium text-foreground">{c.service_name}</p>
+                          <span className="rounded bg-muted px-1.5 py-0.5 text-[9px] uppercase font-mono text-muted-foreground">
+                            {c.service_category}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-foreground font-semibold">
+                          tk {Number(c.service_amount).toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className="inline-flex items-center gap-1 rounded bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 dark:text-blue-300">
+                            {c.commission_type === 'PERCENTAGE'
+                              ? `${Number(c.commission_rate)}%`
+                              : `Fixed tk ${Number(c.commission_rate)}`}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 font-mono font-bold text-emerald-600 dark:text-emerald-400 text-right whitespace-nowrap">
+                          +tk {Number(c.commission_amount).toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-muted/30 font-semibold border-t border-border">
+                    <tr>
+                      <td colSpan={5} className="py-3 px-3 text-right text-xs">
+                        Total Commissions for Period:
+                      </td>
+                      <td className="py-3 px-3 font-mono text-xs">
+                        tk {totalReferredRevenue.toLocaleString()}
+                      </td>
+                      <td></td>
+                      <td className="py-3 px-3 font-mono text-sm font-bold text-emerald-600 dark:text-emerald-400 text-right">
+                        tk {totalCommissionEarned.toLocaleString()}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

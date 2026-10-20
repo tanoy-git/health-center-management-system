@@ -24,6 +24,9 @@ import {
   X,
   AlertCircle,
   RefreshCw,
+  Tag,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
 export default function InvoicesPage() {
@@ -48,13 +51,33 @@ export default function InvoicesPage() {
   // Edit Invoice Modal State (Only for invoices <= 3 days old)
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingInvoice, setEditingInvoice] = useState<any | null>(null);
-  const [editForm, setEditForm] = useState({
+  const [categories, setCategories] = useState<any[]>([]);
+  const [servicesList, setServicesList] = useState<any[]>([]);
+  const [editForm, setEditForm] = useState<{
+    discountAmount: number;
+    discountPercent: number;
+    paymentMethod: string;
+    paymentStatus: string;
+    notes: string;
+    modificationReason: string;
+    items: Array<{
+      id?: string;
+      serviceId?: string;
+      itemName: string;
+      category: string;
+      unitPrice: number;
+      quantity: number;
+      totalPrice: number;
+      is_queued: boolean;
+    }>;
+  }>({
     discountAmount: 0,
     discountPercent: 0,
     paymentMethod: 'CASH',
     paymentStatus: 'PAID',
     notes: '',
     modificationReason: '',
+    items: [],
   });
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
@@ -66,8 +89,14 @@ export default function InvoicesPage() {
   const loadInvoices = async () => {
     setLoading(true);
     try {
-      const data = await apiRequest('/billing/invoices');
-      setInvoices(data || []);
+      const [invData, catData, srvData] = await Promise.all([
+        apiRequest('/billing/invoices'),
+        apiRequest('/billing/categories').catch(() => []),
+        apiRequest('/billing/services').catch(() => []),
+      ]);
+      setInvoices(invData || []);
+      setCategories(catData || []);
+      setServicesList(srvData || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -106,8 +135,8 @@ export default function InvoicesPage() {
     }
   };
 
-  // Open Edit Invoice Modal (Validates <= 3 days rule)
-  const handleOpenEdit = (inv: any) => {
+  // Open Edit Invoice Modal (Validates <= 3 days rule & loads items)
+  const handleOpenEdit = async (inv: any) => {
     const ageInMs = Date.now() - new Date(inv.created_at).getTime();
     const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
 
@@ -116,17 +145,95 @@ export default function InvoicesPage() {
       return;
     }
 
-    setEditingInvoice(inv);
-    setEditForm({
-      discountAmount: Number(inv.discount_amount || 0),
-      discountPercent: Number(inv.discount_percent || 0),
-      paymentMethod: inv.payment_method || 'CASH',
-      paymentStatus: inv.payment_status || 'PAID',
-      notes: inv.notes || '',
-      modificationReason: '',
+    try {
+      const full = await apiRequest(`/billing/invoices/${inv.id}`);
+      setEditingInvoice(full);
+      setEditForm({
+        discountAmount: Number(full.discount_amount || 0),
+        discountPercent: Number(full.discount_percent || 0),
+        paymentMethod: full.payment_method || 'CASH',
+        paymentStatus: full.payment_status || 'PAID',
+        notes: full.notes || '',
+        modificationReason: '',
+        items: (full.items || []).map((it: any) => ({
+          id: it.id,
+          serviceId: it.service_id,
+          itemName: it.item_name,
+          category: it.category,
+          unitPrice: Number(it.unit_price),
+          quantity: it.quantity || 1,
+          totalPrice: Number(it.total_price),
+          is_queued: it.is_queued !== false, // true = pending in queue, false = final submission completed
+        })),
+      });
+      setEditError(null);
+      setEditModalOpen(true);
+    } catch (err: any) {
+      alert(err.message || 'Failed to load invoice items for editing');
+    }
+  };
+
+  const handleUpdateItemCategory = (index: number, newCategory: string) => {
+    setEditForm((prev) => {
+      const updatedItems = [...prev.items];
+      if (!updatedItems[index].is_queued) return prev;
+      updatedItems[index] = { ...updatedItems[index], category: newCategory };
+      return { ...prev, items: updatedItems };
     });
-    setEditError(null);
-    setEditModalOpen(true);
+  };
+
+  const handleUpdateItemService = (index: number, serviceId: string) => {
+    setEditForm((prev) => {
+      const updatedItems = [...prev.items];
+      if (!updatedItems[index].is_queued) return prev;
+      const matched = servicesList.find((s) => s.id === serviceId);
+      if (matched) {
+        const cat = matched.category || matched.category_rel?.code || updatedItems[index].category;
+        const price = Number(matched.price);
+        const qty = updatedItems[index].quantity || 1;
+        updatedItems[index] = {
+          ...updatedItems[index],
+          serviceId: matched.id,
+          itemName: matched.name,
+          category: cat,
+          unitPrice: price,
+          totalPrice: price * qty,
+        };
+      }
+      return { ...prev, items: updatedItems };
+    });
+  };
+
+  const handleRemoveItem = (index: number) => {
+    setEditForm((prev) => {
+      if (!prev.items[index].is_queued) {
+        alert('Cannot remove this service: Clinical final submission has already occurred.');
+        return prev;
+      }
+      return {
+        ...prev,
+        items: prev.items.filter((_, i) => i !== index),
+      };
+    });
+  };
+
+  const handleAddNewItem = () => {
+    const def = servicesList[0];
+    setEditForm((prev) => ({
+      ...prev,
+      items: [
+        ...prev.items,
+        {
+          serviceId: def?.id || '',
+          itemName: def?.name || 'Doctor Consultation',
+          category: def?.category || 'CONSULTATION',
+          unitPrice: def ? Number(def.price) : 500,
+          quantity: 1,
+          totalPrice: def ? Number(def.price) : 500,
+          is_queued: true,
+        },
+      ],
+    }));
   };
 
   const handleSaveInvoiceEdit = async (e: React.FormEvent) => {
@@ -435,12 +542,12 @@ export default function InvoicesPage() {
 
       {/* Edit Invoice Modal (3-Day Policy) */}
       {editModalOpen && editingInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-3xl my-6 rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4 animate-in fade-in max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div>
                 <h3 className="text-sm font-bold text-foreground">
-                  Edit Invoice (Within 3-Day Window)
+                  Edit Invoice & Service Categories (Within 3-Day Window)
                 </h3>
                 <p className="text-[11px] text-muted-foreground font-mono">
                   Invoice: {editingInvoice.invoice_number} • Patient:{' '}
@@ -463,6 +570,201 @@ export default function InvoicesPage() {
             )}
 
             <form onSubmit={handleSaveInvoiceEdit} className="space-y-4">
+              {/* Billed Service Items & Categories Management */}
+              <div className="space-y-3 rounded-xl border border-border p-3.5 bg-muted/10">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Tag className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                      <span>Billed Services & Categories ({editForm.items.length})</span>
+                    </h4>
+                    <p className="text-[10px] text-muted-foreground">
+                      Edit service categories for pending services. Prescriptions, eye exams, and tests after final submission cannot be edited.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddNewItem}
+                    className="inline-flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 px-2.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-100"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Add Service Item</span>
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {editForm.items.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-border py-4 text-center text-xs text-muted-foreground">
+                      No services in this invoice. Click &quot;Add Service Item&quot; to add.
+                    </div>
+                  ) : (
+                    editForm.items.map((it, idx) => {
+                      const isFinalized = !it.is_queued; // Final clinical submission completed!
+                      return (
+                        <div
+                          key={idx}
+                          className={`rounded-lg border p-2.5 text-xs transition-all ${
+                            isFinalized
+                              ? 'border-amber-200 dark:border-amber-900/40 bg-amber-50/20 dark:bg-amber-950/10'
+                              : 'border-border bg-background'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between pb-1.5 border-b border-border/40 mb-2">
+                            <div className="flex items-center gap-2">
+                              {isFinalized ? (
+                                <span className="inline-flex items-center gap-1 rounded bg-amber-100 dark:bg-amber-950/60 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                                  <Lock className="h-3 w-3" />
+                                  <span>Final Clinical Submission Completed (Cannot Edit)</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 rounded bg-blue-100 dark:bg-blue-950/60 px-2 py-0.5 text-[10px] font-bold text-blue-700 dark:text-blue-300">
+                                  <Clock className="h-3 w-3" />
+                                  <span>Pending Clinical Queue (Category &amp; Service Editable)</span>
+                                </span>
+                              )}
+                            </div>
+                            {!isFinalized && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItem(idx)}
+                                className="text-red-500 hover:text-red-700 p-0.5"
+                                title="Cancel / Remove Item"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-12 gap-2 items-center">
+                            {/* Service / Item Name */}
+                            <div className="col-span-12 sm:col-span-5">
+                              <label className="text-[10px] font-medium text-muted-foreground block">
+                                Service Name
+                              </label>
+                              {isFinalized ? (
+                                <input
+                                  type="text"
+                                  disabled
+                                  value={it.itemName}
+                                  className="w-full rounded border border-input bg-muted/60 px-2 py-1.5 text-xs text-muted-foreground font-medium cursor-not-allowed"
+                                />
+                              ) : (
+                                <select
+                                  value={it.serviceId || ''}
+                                  onChange={(e) => handleUpdateItemService(idx, e.target.value)}
+                                  className="w-full rounded border border-input bg-card px-2 py-1.5 text-xs text-foreground outline-none focus:ring-1 focus:ring-primary"
+                                >
+                                  <option value="">-- Custom / Select Catalog Service --</option>
+                                  {servicesList.map((srv) => (
+                                    <option key={srv.id} value={srv.id}>
+                                      {srv.name} (tk {Number(srv.price)})
+                                    </option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+
+                            {/* Category of Service */}
+                            <div className="col-span-6 sm:col-span-3">
+                              <label className="text-[10px] font-medium text-muted-foreground block">
+                                Category of Service
+                              </label>
+                              {isFinalized ? (
+                                <input
+                                  type="text"
+                                  disabled
+                                  value={it.category}
+                                  className="w-full rounded border border-input bg-muted/60 px-2 py-1.5 text-xs text-muted-foreground font-semibold cursor-not-allowed"
+                                />
+                              ) : (
+                                <select
+                                  value={it.category}
+                                  onChange={(e) => handleUpdateItemCategory(idx, e.target.value)}
+                                  className="w-full rounded border border-blue-300 dark:border-blue-700 bg-card px-2 py-1.5 text-xs font-semibold text-blue-700 dark:text-blue-300 outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                                >
+                                  {categories.length > 0 ? (
+                                    categories.map((c) => (
+                                      <option key={c.id} value={c.code}>
+                                        {c.name} ({c.code})
+                                      </option>
+                                    ))
+                                  ) : (
+                                    <>
+                                      <option value="CONSULTATION">Prescription / Consultation</option>
+                                      <option value="EYE">Eye Prescription</option>
+                                      <option value="USG">Ultrasonography (USG)</option>
+                                      <option value="LAB_TEST">Lab Test &amp; Pathology</option>
+                                      <option value="RADIOLOGY">Radiology &amp; X-Ray</option>
+                                      <option value="ECG">ECG &amp; Cardiology</option>
+                                      <option value="PROCEDURE">Clinical Procedure</option>
+                                    </>
+                                  )}
+                                </select>
+                              )}
+                            </div>
+
+                            {/* Unit Price */}
+                            <div className="col-span-3 sm:col-span-2">
+                              <label className="text-[10px] font-medium text-muted-foreground block">
+                                Price (tk)
+                              </label>
+                              <input
+                                type="number"
+                                disabled={isFinalized}
+                                value={it.unitPrice}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value);
+                                  setEditForm((prev) => {
+                                    const updated = [...prev.items];
+                                    updated[idx] = {
+                                      ...updated[idx],
+                                      unitPrice: val,
+                                      totalPrice: val * (updated[idx].quantity || 1),
+                                    };
+                                    return { ...prev, items: updated };
+                                  });
+                                }}
+                                className={`w-full rounded border px-2 py-1.5 text-xs font-mono outline-none ${
+                                  isFinalized ? 'bg-muted/60 border-input text-muted-foreground cursor-not-allowed' : 'bg-card border-input text-foreground'
+                                }`}
+                              />
+                            </div>
+
+                            {/* Quantity */}
+                            <div className="col-span-3 sm:col-span-2">
+                              <label className="text-[10px] font-medium text-muted-foreground block">
+                                Qty
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                disabled={isFinalized}
+                                value={it.quantity}
+                                onChange={(e) => {
+                                  const qty = Math.max(1, parseInt(e.target.value) || 1);
+                                  setEditForm((prev) => {
+                                    const updated = [...prev.items];
+                                    updated[idx] = {
+                                      ...updated[idx],
+                                      quantity: qty,
+                                      totalPrice: updated[idx].unitPrice * qty,
+                                    };
+                                    return { ...prev, items: updated };
+                                  });
+                                }}
+                                className={`w-full rounded border px-2 py-1.5 text-xs font-mono outline-none ${
+                                  isFinalized ? 'bg-muted/60 border-input text-muted-foreground cursor-not-allowed' : 'bg-card border-input text-foreground'
+                                }`}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <label className="font-semibold text-foreground">Discount Amount (tk)</label>

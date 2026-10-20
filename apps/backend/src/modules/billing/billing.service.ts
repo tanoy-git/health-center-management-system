@@ -106,6 +106,16 @@ export interface CreateInvoiceDto {
   paymentMethod: string; // CASH, CARD, MOBILE_BANKING, INSURANCE
   paidAmount?: number;
   notes?: string;
+  referredById?: string;
+}
+
+export interface UpdateInvoiceItemDto {
+  id?: string;
+  serviceId?: string;
+  itemName: string;
+  category: string;
+  unitPrice: number;
+  quantity: number;
 }
 
 export interface UpdateInvoiceDto {
@@ -115,6 +125,7 @@ export interface UpdateInvoiceDto {
   paymentStatus?: string;
   notes?: string;
   modificationReason: string;
+  items?: UpdateInvoiceItemDto[];
 }
 
 @Injectable()
@@ -621,6 +632,108 @@ export class BillingService {
         },
       });
 
+      // Automatic Referral Commission Evaluation & Database Recording
+      const patient = await tx.patient.findUnique({
+        where: { id: dto.patientId },
+        select: { id: true, referred_by_id: true },
+      });
+
+      const referringEmployeeId = dto.referredById || patient?.referred_by_id;
+
+      if (referringEmployeeId) {
+        const activeRules = await tx.referralCommissionRule.findMany({
+          where: {
+            center_id: centerId,
+            status: 'ACTIVE',
+            deleted_at: null,
+          },
+        });
+
+        const allCategories = await tx.serviceCategory.findMany({
+          select: { id: true, code: true },
+        });
+        const catMap = new Map(allCategories.map((c) => [c.code.toUpperCase(), c.id]));
+
+        for (const createdItem of invoice.items) {
+          const itemPrice = Number(createdItem.total_price);
+          let categoryId: string | undefined = catMap.get((createdItem.category || '').toUpperCase());
+          if (createdItem.service_id) {
+            const srv = await tx.serviceCatalog.findUnique({
+              where: { id: createdItem.service_id },
+              select: { category_id: true },
+            });
+            if (srv?.category_id) categoryId = srv.category_id;
+          }
+
+          // Rule priority matching:
+          // 1. Employee-specific + Service-specific
+          // 2. Any Employee + Service-specific
+          // 3. Employee-specific + Category-specific
+          // 4. Any Employee + Category-specific
+          // 5. Employee-specific default
+          // 6. Global default
+          let matchedRule = activeRules.find(
+            (r) => r.employee_id === referringEmployeeId && r.service_id === createdItem.service_id,
+          );
+          if (!matchedRule && createdItem.service_id) {
+            matchedRule = activeRules.find(
+              (r) => !r.employee_id && r.service_id === createdItem.service_id,
+            );
+          }
+          if (!matchedRule && categoryId) {
+            matchedRule = activeRules.find(
+              (r) => r.employee_id === referringEmployeeId && r.category_id === categoryId,
+            );
+          }
+          if (!matchedRule && categoryId) {
+            matchedRule = activeRules.find(
+              (r) => !r.employee_id && r.category_id === categoryId,
+            );
+          }
+          if (!matchedRule) {
+            matchedRule = activeRules.find(
+              (r) => r.employee_id === referringEmployeeId && !r.service_id && !r.category_id,
+            );
+          }
+          if (!matchedRule) {
+            matchedRule = activeRules.find(
+              (r) => !r.employee_id && !r.service_id && !r.category_id,
+            );
+          }
+
+          if (matchedRule) {
+            const rate = Number(matchedRule.commission_value);
+            let commAmount = 0;
+            if (matchedRule.commission_type === 'PERCENTAGE') {
+              commAmount = (itemPrice * rate) / 100;
+            } else {
+              commAmount = rate * (createdItem.quantity || 1);
+            }
+
+            if (commAmount > 0) {
+              await tx.referralCommission.create({
+                data: {
+                  center_id: centerId,
+                  invoice_id: invoice.id,
+                  invoice_item_id: createdItem.id,
+                  patient_id: dto.patientId,
+                  employee_id: referringEmployeeId,
+                  service_id: createdItem.service_id || null,
+                  category_id: categoryId || null,
+                  service_name: createdItem.item_name,
+                  service_category: createdItem.category,
+                  service_amount: new Prisma.Decimal(itemPrice),
+                  commission_type: matchedRule.commission_type,
+                  commission_rate: new Prisma.Decimal(rate),
+                  commission_amount: new Prisma.Decimal(commAmount),
+                  status: 'EARNED',
+                },
+              });
+            }
+          }
+        }
+      }
+
       return invoice;
     });
   }
@@ -713,7 +826,38 @@ export class BillingService {
       );
     }
 
-    const subtotal = Number(existing.subtotal);
+    let subtotal = Number(existing.subtotal);
+
+    // Requirement 1: Category of service can be edited (prescription, eye prescription, other tests)
+    // BUT after final submission cannot be edited!
+    if (dto.items && Array.isArray(dto.items)) {
+      for (const oldItem of existing.items) {
+        // is_queued === false means clinical final submission was already executed
+        if (!oldItem.is_queued) {
+          const matchingUpdated = dto.items.find((it) => it.id === oldItem.id);
+          if (!matchingUpdated) {
+            throw new BadRequestException(
+              `Cannot remove item "${oldItem.item_name}": Final clinical submission has already been completed.`,
+            );
+          }
+          if (
+            matchingUpdated.category !== oldItem.category ||
+            matchingUpdated.itemName !== oldItem.item_name
+          ) {
+            throw new BadRequestException(
+              `Cannot change category or service for "${oldItem.item_name}": Final clinical submission has already been completed.`,
+            );
+          }
+        }
+      }
+
+      // Re-calculate subtotal
+      subtotal = dto.items.reduce(
+        (sum, it) => sum + Number(it.unitPrice) * (it.quantity || 1),
+        0,
+      );
+    }
+
     let discountAmount =
       dto.discountAmount !== undefined
         ? dto.discountAmount
@@ -728,9 +872,59 @@ export class BillingService {
     const balanceAmount = Math.max(0, totalAmount - paidAmount);
 
     return this.prisma.$transaction(async (tx) => {
+      // Process items if provided
+      if (dto.items && Array.isArray(dto.items)) {
+        // Delete items that were removed (only queued/pending items can be removed)
+        const keptIds = dto.items.map((it) => it.id).filter(Boolean) as string[];
+        await tx.invoiceItem.deleteMany({
+          where: {
+            invoice_id: id,
+            id: { notIn: keptIds },
+            is_queued: true,
+          },
+        });
+
+        // Update existing pending items or create new items
+        for (const it of dto.items) {
+          const lineTotal = Number(it.unitPrice) * (it.quantity || 1);
+          if (it.id) {
+            const ex = existing.items.find((e) => e.id === it.id);
+            if (ex && ex.is_queued) {
+              await tx.invoiceItem.update({
+                where: { id: it.id },
+                data: {
+                  service_id: it.serviceId || null,
+                  item_name: it.itemName,
+                  category: it.category,
+                  unit_price: new Prisma.Decimal(it.unitPrice),
+                  quantity: it.quantity || 1,
+                  total_price: new Prisma.Decimal(lineTotal),
+                },
+              });
+            }
+          } else {
+            // New service item added within 3-day window
+            await tx.invoiceItem.create({
+              data: {
+                center_id: centerId,
+                invoice_id: id,
+                service_id: it.serviceId || null,
+                item_name: it.itemName,
+                category: it.category,
+                unit_price: new Prisma.Decimal(it.unitPrice),
+                quantity: it.quantity || 1,
+                total_price: new Prisma.Decimal(lineTotal),
+                is_queued: true,
+              },
+            });
+          }
+        }
+      }
+
       const updated = await tx.invoice.update({
         where: { id },
         data: {
+          subtotal: new Prisma.Decimal(subtotal),
           discount_amount: new Prisma.Decimal(discountAmount),
           discount_percent: new Prisma.Decimal(dto.discountPercent ?? Number(existing.discount_percent)),
           total_amount: new Prisma.Decimal(totalAmount),
@@ -759,11 +953,13 @@ export class BillingService {
               total: Number(existing.total_amount),
               discount: Number(existing.discount_amount),
               status: existing.payment_status,
+              itemCount: existing.items.length,
             },
             newState: {
               total: totalAmount,
               discount: discountAmount,
               status: updated.payment_status,
+              itemCount: updated.items.length,
             },
           }),
           created_by: userId,
@@ -1014,5 +1210,112 @@ export class BillingService {
       invoice,
       thermalReceiptText: thermalText,
     };
+  }
+
+  // ---------------------------------------------
+  // REFERRAL COMMISSION RULES & COMMISSIONS
+  // ---------------------------------------------
+  async getCommissionRules(centerId: string) {
+    return this.prisma.referralCommissionRule.findMany({
+      where: { center_id: centerId, deleted_at: null },
+      include: {
+        employee: {
+          include: {
+            user: { select: { first_name: true, last_name: true, email: true, phone: true } },
+          },
+        },
+        service: { select: { id: true, name: true, code: true, price: true } },
+        category: { select: { id: true, name: true, code: true } },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+  }
+
+  async createCommissionRule(centerId: string, userId: string, dto: any) {
+    return this.prisma.referralCommissionRule.create({
+      data: {
+        center_id: centerId,
+        employee_id: dto.employeeId || null,
+        service_id: dto.serviceId || null,
+        category_id: dto.categoryId || null,
+        commission_type: dto.commissionType || 'PERCENTAGE',
+        commission_value: new Prisma.Decimal(dto.commissionValue || 0),
+        status: dto.status || 'ACTIVE',
+        created_by: userId,
+      },
+      include: {
+        employee: { include: { user: true } },
+        service: true,
+        category: true,
+      },
+    });
+  }
+
+  async updateCommissionRule(id: string, centerId: string, userId: string, dto: any) {
+    const existing = await this.prisma.referralCommissionRule.findFirst({
+      where: { id, center_id: centerId, deleted_at: null },
+    });
+    if (!existing) {
+      throw new NotFoundException('Commission rule not found');
+    }
+    return this.prisma.referralCommissionRule.update({
+      where: { id },
+      data: {
+        employee_id: dto.employeeId !== undefined ? (dto.employeeId || null) : existing.employee_id,
+        service_id: dto.serviceId !== undefined ? (dto.serviceId || null) : existing.service_id,
+        category_id: dto.categoryId !== undefined ? (dto.categoryId || null) : existing.category_id,
+        commission_type: dto.commissionType || existing.commission_type,
+        commission_value: dto.commissionValue !== undefined ? new Prisma.Decimal(dto.commissionValue) : existing.commission_value,
+        status: dto.status || existing.status,
+        updated_by: userId,
+      },
+      include: {
+        employee: { include: { user: true } },
+        service: true,
+        category: true,
+      },
+    });
+  }
+
+  async deleteCommissionRule(id: string, centerId: string) {
+    return this.prisma.referralCommissionRule.update({
+      where: { id },
+      data: { deleted_at: new Date(), status: 'INACTIVE' },
+    });
+  }
+
+  async getCommissions(
+    centerId: string,
+    employeeId?: string,
+    startDate?: string,
+    endDate?: string,
+  ) {
+    const where: any = { center_id: centerId, deleted_at: null };
+    if (employeeId && employeeId !== 'ALL') {
+      where.employee_id = employeeId;
+    }
+    if (startDate && endDate) {
+      where.created_at = {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      };
+    }
+    return this.prisma.referralCommission.findMany({
+      where,
+      include: {
+        employee: {
+          include: {
+            user: { select: { first_name: true, last_name: true, phone: true } },
+          },
+        },
+        patient: {
+          select: { id: true, uhid: true, first_name: true, last_name: true, phone: true },
+        },
+        invoice: {
+          select: { id: true, invoice_number: true, created_at: true, total_amount: true },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
   }
 }

@@ -243,4 +243,54 @@ export class BillingController {
   ) {
     return this.billingService.getReceiptData(id, centerId);
   }
+
+  // ---------------------------------------------
+  // REFERRAL COMMISSION RULES & COMMISSIONS
+  // ---------------------------------------------
+  @Get('commissions/rules')
+  @RequirePermissions('billing:invoices:read')
+  async getCommissionRules(@CurrentTenant() centerId: string) {
+    return this.billingService.getCommissionRules(centerId);
+  }
+
+  @Post('commissions/rules')
+  @RequirePermissions('billing:invoices:read')
+  async createCommissionRule(
+    @CurrentTenant() centerId: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: any,
+  ) {
+    return this.billingService.createCommissionRule(centerId, userId, body);
+  }
+
+  @Put('commissions/rules/:id')
+  @RequirePermissions('billing:invoices:read')
+  async updateCommissionRule(
+    @Param('id') id: string,
+    @CurrentTenant() centerId: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: any,
+  ) {
+    return this.billingService.updateCommissionRule(id, centerId, userId, body);
+  }
+
+  @Delete('commissions/rules/:id')
+  @RequirePermissions('billing:invoices:read')
+  async deleteCommissionRule(
+    @Param('id') id: string,
+    @CurrentTenant() centerId: string,
+  ) {
+    return this.billingService.deleteCommissionRule(id, centerId);
+  }
+
+  @Get('commissions')
+  @RequirePermissions('billing:invoices:read')
+  async getCommissions(
+    @CurrentTenant() centerId: string,
+    @Query('employeeId') employeeId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.billingService.getCommissions(centerId, employeeId, startDate, endDate);
+  }
 }

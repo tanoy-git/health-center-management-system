@@ -50,8 +50,20 @@ export class DiagnosticsController {
     @CurrentTenant() centerId: string,
     @Query('testType') testType?: string,
     @Query('status') status?: string,
+    @Query('doctorId') doctorId?: string,
+    @Query('search') search?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
-    return this.diagnosticsService.getReports(centerId, testType, status);
+    return this.diagnosticsService.getReports(
+      centerId,
+      testType,
+      status,
+      doctorId,
+      search,
+      startDate,
+      endDate,
+    );
   }
 
   @Get('reports/:id')

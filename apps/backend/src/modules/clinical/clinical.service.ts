@@ -38,7 +38,9 @@ export interface CreatePrescriptionDto {
     spo2?: string;
   };
   followUpDate?: string;
-  items: PrescriptionMedicineItemDto[];
+  items?: PrescriptionMedicineItemDto[];
+  prescriptionType?: string; // 'GENERAL' | 'EYE'
+  eyeData?: any;
 }
 
 @Injectable()
@@ -48,8 +50,13 @@ export class ClinicalService {
   // ---------------------------------------------
   // MEDICINE CATALOG
   // ---------------------------------------------
-  async getMedicines(centerId: string, search?: string) {
-    const where: any = { center_id: centerId, status: 'ACTIVE' };
+  async getMedicines(centerId: string, search?: string, status?: string) {
+    const where: any = { center_id: centerId };
+    if (status && status !== 'ALL') {
+      where.status = status;
+    } else if (!status) {
+      where.status = 'ACTIVE';
+    }
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -93,6 +100,55 @@ export class ClinicalService {
     });
   }
 
+  async updateMedicine(
+    id: string,
+    centerId: string,
+    dto: Partial<CreateMedicineDto> & { status?: string; reorderLevel?: number },
+    userId?: string,
+  ) {
+    const existing = await this.prisma.medicine.findFirst({
+      where: { id, center_id: centerId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Medicine not found at this center');
+    }
+
+    const data: any = { updated_by: userId };
+    if (dto.name !== undefined) data.name = dto.name.trim();
+    if (dto.genericName !== undefined) data.generic_name = dto.genericName?.trim();
+    if (dto.form !== undefined) data.form = dto.form;
+    if (dto.strength !== undefined) data.strength = dto.strength;
+    if (dto.price !== undefined) data.price = new Prisma.Decimal(dto.price);
+    if (dto.stockQuantity !== undefined) data.stock_quantity = Number(dto.stockQuantity);
+    if (dto.reorderLevel !== undefined) data.reorder_level = Number(dto.reorderLevel);
+    if (dto.status !== undefined) data.status = dto.status;
+
+    return this.prisma.medicine.update({
+      where: { id },
+      data,
+    });
+  }
+
+  async deleteMedicine(id: string, centerId: string, userId?: string) {
+    const existing = await this.prisma.medicine.findFirst({
+      where: { id, center_id: centerId },
+    });
+
+    if (!existing) {
+      throw new NotFoundException('Medicine not found at this center');
+    }
+
+    return this.prisma.medicine.update({
+      where: { id },
+      data: {
+        status: 'INACTIVE',
+        deleted_at: new Date(),
+        updated_by: userId,
+      },
+    });
+  }
+
   // ---------------------------------------------
   // PRESCRIPTION ENGINE
   // ---------------------------------------------
@@ -110,7 +166,7 @@ export class ClinicalService {
     doctorId: string,
     dto: CreatePrescriptionDto,
   ) {
-    if (!dto.items || dto.items.length === 0) {
+    if ((!dto.items || dto.items.length === 0) && dto.prescriptionType !== 'EYE') {
       throw new BadRequestException(
         'Prescription must contain at least one medicine',
       );
@@ -126,6 +182,16 @@ export class ClinicalService {
 
     const prescriptionNumber = await this.generatePrescriptionNumber(centerId);
 
+    const itemsData = (dto.items || []).map((item) => ({
+      center_id: centerId,
+      medicine_id: item.medicineId || null,
+      medicine_name: item.medicineName,
+      dosage: item.dosage,
+      duration: item.duration,
+      instructions: item.instructions || null,
+      created_by: doctorId,
+    }));
+
     const prescription = await this.prisma.prescription.create({
       data: {
         center_id: centerId,
@@ -136,17 +202,15 @@ export class ClinicalService {
         diagnosis: dto.diagnosis,
         vitals: dto.vitals ? JSON.stringify(dto.vitals) : null,
         follow_up_date: dto.followUpDate ? new Date(dto.followUpDate) : null,
+        prescription_type: dto.prescriptionType || 'GENERAL',
+        eye_data: dto.eyeData
+          ? typeof dto.eyeData === 'string'
+            ? dto.eyeData
+            : JSON.stringify(dto.eyeData)
+          : null,
         created_by: doctorId,
         items: {
-          create: dto.items.map((item) => ({
-            center_id: centerId,
-            medicine_id: item.medicineId || null,
-            medicine_name: item.medicineName,
-            dosage: item.dosage,
-            duration: item.duration,
-            instructions: item.instructions || null,
-            created_by: doctorId,
-          })),
+          create: itemsData,
         },
       },
       include: {
@@ -167,6 +231,7 @@ export class ClinicalService {
         where: {
           center_id: centerId,
           is_queued: true,
+          is_refunded: false,
           invoice: { patient_id: dto.patientId },
         },
         orderBy: { created_at: 'asc' },
@@ -189,14 +254,28 @@ export class ClinicalService {
     const where: any = {
       center_id: centerId,
       is_queued: true,
+      is_refunded: false, // strictly exclude refunded items
       invoice: {
         deleted_at: null,
       },
     };
 
-    if (category && category !== 'ALL') {
+    const catUpper = (category || '').toUpperCase().trim();
+
+    if (catUpper === 'EYE' || catUpper === 'OPHTHALMOLOGY') {
+      where.OR = [
+        { category: { equals: 'EYE', mode: 'insensitive' } },
+        { category: { equals: 'OPHTHALMOLOGY', mode: 'insensitive' } },
+        { item_name: { contains: 'Eye', mode: 'insensitive' } },
+        { item_name: { contains: 'Vision', mode: 'insensitive' } },
+        { item_name: { contains: 'Refraction', mode: 'insensitive' } },
+        { item_name: { contains: 'Optical', mode: 'insensitive' } },
+        { item_name: { contains: 'Glaucoma', mode: 'insensitive' } },
+        { item_name: { contains: 'Cataract', mode: 'insensitive' } },
+      ];
+    } else if (catUpper && catUpper !== 'ALL' && catUpper !== 'CONSULTATION') {
       where.category = { equals: category, mode: 'insensitive' };
-    } else if (!category || category === 'CONSULTATION') {
+    } else if (!catUpper || catUpper === 'CONSULTATION') {
       where.OR = [
         { category: { equals: 'CONSULTATION', mode: 'insensitive' } },
         { category: { equals: 'GENERAL_PRESCRIPTION', mode: 'insensitive' } },
@@ -266,11 +345,40 @@ export class ClinicalService {
     });
   }
 
-  async getPrescriptions(centerId: string, patientId?: string) {
+  async getPrescriptions(
+    centerId: string,
+    patientId?: string,
+    doctorId?: string,
+    search?: string,
+    prescriptionType?: string,
+    startDate?: string,
+    endDate?: string,
+  ) {
     const where: any = { center_id: centerId };
     if (patientId) {
       where.patient_id = patientId;
     }
+    if (doctorId) {
+      where.doctor_id = doctorId;
+    }
+    if (prescriptionType) {
+      where.prescription_type = prescriptionType;
+    }
+    if (startDate && endDate) {
+      where.created_at = {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      };
+    }
+    if (search) {
+      where.OR = [
+        { prescription_number: { contains: search, mode: 'insensitive' } },
+        { patient: { first_name: { contains: search, mode: 'insensitive' } } },
+        { patient: { last_name: { contains: search, mode: 'insensitive' } } },
+        { patient: { uhid: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
+
     return this.prisma.prescription.findMany({
       where,
       orderBy: { created_at: 'desc' },
@@ -283,6 +391,7 @@ export class ClinicalService {
             last_name: true,
             gender: true,
             dob: true,
+            phone: true,
           },
         },
         items: true,
@@ -361,13 +470,17 @@ export class ClinicalService {
       },
     );
 
-    page.drawText('CLINICAL OUTPATIENT PRESCRIPTION', {
-      x: 45,
-      y: y - 48,
-      size: 10,
-      font: fontBold,
-      color: rgb(0.2, 0.2, 0.2),
-    });
+    const isEyeRx = rx.prescription_type === 'EYE' || !!rx.eye_data;
+    page.drawText(
+      isEyeRx ? 'OPHTHALMOLOGY & EYE REFRACTION PRESCRIPTION' : 'CLINICAL OUTPATIENT PRESCRIPTION',
+      {
+        x: 45,
+        y: y - 48,
+        size: 10,
+        font: fontBold,
+        color: rgb(0.2, 0.2, 0.2),
+      },
+    );
 
     y -= 75;
 
@@ -375,7 +488,7 @@ export class ClinicalService {
     const docName = rx.doctor
       ? `Dr. ${rx.doctor.first_name} ${rx.doctor.last_name}`
       : 'Consulting Physician';
-    const docDesignation = rx.doctor?.employee?.designation || 'Medical Officer';
+    const docDesignation = rx.doctor?.employee?.designation || (isEyeRx ? 'Consultant Ophthalmologist / Optometrist' : 'Medical Officer');
 
     page.drawText(docName, { x: 35, y, size: 12, font: fontBold, color: darkGray });
     page.drawText(docDesignation, { x: 35, y: y - 14, size: 9, font: fontRegular, color: lightGray });
@@ -430,6 +543,14 @@ export class ClinicalService {
 
     y -= 18;
 
+    // Parse Eye Data if present
+    let eyeDataObj: any = null;
+    if (rx.eye_data) {
+      try {
+        eyeDataObj = typeof rx.eye_data === 'string' ? JSON.parse(rx.eye_data) : rx.eye_data;
+      } catch (e) {}
+    }
+
     // Vitals Bar
     if (rx.vitals) {
       try {
@@ -466,6 +587,103 @@ export class ClinicalService {
         color: lightGray,
       });
       y -= 20;
+    }
+
+    // ---------------------------------------------
+    // SPECIALIZED OPHTHALMIC REFRACTION TABLE (FOR EYE PRESCRIPTIONS)
+    // ---------------------------------------------
+    if (isEyeRx && eyeDataObj) {
+      page.drawRectangle({
+        x: 35,
+        y: y - 80,
+        width: width - 70,
+        height: 85,
+        color: rgb(0.97, 0.99, 1.0),
+        borderColor: rgb(0.3, 0.6, 0.9),
+        borderWidth: 1,
+      });
+
+      page.drawText('OPTICAL REFRACTION & VISION MEASUREMENT', {
+        x: 45,
+        y: y - 14,
+        size: 9,
+        font: fontBold,
+        color: primaryColor,
+      });
+
+      // Refraction Table Header
+      const tableY = y - 30;
+      page.drawText('Eye', { x: 45, y: tableY, size: 8, font: fontBold, color: darkGray });
+      page.drawText('Dist UCVA', { x: 90, y: tableY, size: 8, font: fontBold, color: darkGray });
+      page.drawText('Dist BCVA', { x: 155, y: tableY, size: 8, font: fontBold, color: darkGray });
+      page.drawText('SPH', { x: 220, y: tableY, size: 8, font: fontBold, color: darkGray });
+      page.drawText('CYL', { x: 270, y: tableY, size: 8, font: fontBold, color: darkGray });
+      page.drawText('AXIS', { x: 320, y: tableY, size: 8, font: fontBold, color: darkGray });
+      page.drawText('ADD', { x: 370, y: tableY, size: 8, font: fontBold, color: darkGray });
+      page.drawText('Near Vision', { x: 420, y: tableY, size: 8, font: fontBold, color: darkGray });
+      page.drawText('IOP (mmHg)', { x: 485, y: tableY, size: 8, font: fontBold, color: darkGray });
+
+      // OD (Right Eye) Row
+      const odY = tableY - 18;
+      const od = eyeDataObj.od || {};
+      page.drawText('OD (R)', { x: 45, y: odY, size: 8.5, font: fontBold, color: primaryColor });
+      page.drawText(od.distUcva || '--', { x: 90, y: odY, size: 8.5, font: fontRegular, color: darkGray });
+      page.drawText(od.distBcva || '--', { x: 155, y: odY, size: 8.5, font: fontRegular, color: darkGray });
+      page.drawText(od.sph || '0.00', { x: 220, y: odY, size: 8.5, font: fontBold, color: darkGray });
+      page.drawText(od.cyl || '0.00', { x: 270, y: odY, size: 8.5, font: fontBold, color: darkGray });
+      page.drawText(od.axis ? `${od.axis}°` : '--', { x: 320, y: odY, size: 8.5, font: fontRegular, color: darkGray });
+      page.drawText(od.add || '--', { x: 370, y: odY, size: 8.5, font: fontRegular, color: darkGray });
+      page.drawText(od.nearVision || '--', { x: 420, y: odY, size: 8.5, font: fontRegular, color: darkGray });
+      page.drawText(od.iop ? `${od.iop}` : '--', { x: 485, y: odY, size: 8.5, font: fontRegular, color: darkGray });
+
+      // OS (Left Eye) Row
+      const osY = odY - 16;
+      const os = eyeDataObj.os || {};
+      page.drawText('OS (L)', { x: 45, y: osY, size: 8.5, font: fontBold, color: primaryColor });
+      page.drawText(os.distUcva || '--', { x: 90, y: osY, size: 8.5, font: fontRegular, color: darkGray });
+      page.drawText(os.distBcva || '--', { x: 155, y: osY, size: 8.5, font: fontRegular, color: darkGray });
+      page.drawText(os.sph || '0.00', { x: 220, y: osY, size: 8.5, font: fontBold, color: darkGray });
+      page.drawText(os.cyl || '0.00', { x: 270, y: osY, size: 8.5, font: fontBold, color: darkGray });
+      page.drawText(os.axis ? `${os.axis}°` : '--', { x: 320, y: osY, size: 8.5, font: fontRegular, color: darkGray });
+      page.drawText(os.add || '--', { x: 370, y: osY, size: 8.5, font: fontRegular, color: darkGray });
+      page.drawText(os.nearVision || '--', { x: 420, y: osY, size: 8.5, font: fontRegular, color: darkGray });
+      page.drawText(os.iop ? `${os.iop}` : '--', { x: 485, y: osY, size: 8.5, font: fontRegular, color: darkGray });
+
+      y -= 95;
+
+      // Lens Advice & Clinical Eye Findings
+      if (eyeDataObj.lensRecommendation || eyeDataObj.slitLamp || eyeDataObj.fundus) {
+        if (eyeDataObj.lensRecommendation) {
+          page.drawText(`Lens Advice: ${eyeDataObj.lensRecommendation}`, {
+            x: 35,
+            y,
+            size: 8.5,
+            font: fontBold,
+            color: rgb(0.1, 0.45, 0.2),
+          });
+          y -= 14;
+        }
+        if (eyeDataObj.slitLamp) {
+          page.drawText(`Slit Lamp Exam: ${eyeDataObj.slitLamp}`, {
+            x: 35,
+            y,
+            size: 8,
+            font: fontRegular,
+            color: darkGray,
+          });
+          y -= 13;
+        }
+        if (eyeDataObj.fundus) {
+          page.drawText(`Fundus Exam: ${eyeDataObj.fundus}`, {
+            x: 35,
+            y,
+            size: 8,
+            font: fontRegular,
+            color: darkGray,
+          });
+          y -= 13;
+        }
+      }
     }
 
     page.drawLine({

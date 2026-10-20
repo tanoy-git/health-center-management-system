@@ -22,12 +22,24 @@ import {
   Users,
 } from 'lucide-react';
 
+import DateRangeFilter, {
+  DateFilterValue,
+  getDefaultDateFilter,
+  filterMatchesDate,
+} from '@/components/DateRangeFilter';
+
 export default function DiagnosticsPage() {
   const { activeCenter, hasPermission, user } = useAuth();
   const [reports, setReports] = useState<any[]>([]);
   const [patients, setPatients] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
   const [testTypeFilter, setTestTypeFilter] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // Filters for Report Section
+  const [reportDateFilter, setReportDateFilter] = useState<DateFilterValue>(getDefaultDateFilter());
+  const [reportDoctorFilter, setReportDoctorFilter] = useState('ALL');
+  const [reportPatientSearch, setReportPatientSearch] = useState('');
 
   // Diagnostics Patient Queue State
   const [queueItems, setQueueItems] = useState<any[]>([]);
@@ -156,6 +168,9 @@ export default function DiagnosticsPage() {
       if (pts && pts.length > 0) {
         setSelectedPatientId(pts[0].id);
       }
+
+      const emps = await apiRequest('/hr/employees').catch(() => []);
+      setEmployees(emps || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -467,45 +482,121 @@ export default function DiagnosticsPage() {
         })()}
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex items-center gap-2 border-b border-border pb-2">
-        {['', 'USG', 'LAB', 'XRAY', 'ECG'].map((type) => (
-          <button
-            key={type}
-            onClick={() => setTestTypeFilter(type)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-              testTypeFilter === type
-                ? 'bg-blue-600 text-white'
-                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-            }`}
-          >
-            {type === '' ? 'All Reports' : type}
-          </button>
-        ))}
+      {/* Report Section Filter Toolbar */}
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-card shadow-xs">
+          <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
+            {/* Search by Patient / Report # */}
+            <div className="relative flex-1 min-w-[160px] max-w-[240px]">
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                value={reportPatientSearch}
+                onChange={(e) => setReportPatientSearch(e.target.value)}
+                placeholder="Filter by Patient or Report #..."
+                className="w-full rounded-lg border border-input bg-background pl-8 pr-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-xs"
+              />
+            </div>
+
+            {/* Filter by Doctor / Pathologist */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-muted-foreground">Doctor/Technician:</span>
+              <select
+                value={reportDoctorFilter}
+                onChange={(e) => setReportDoctorFilter(e.target.value)}
+                className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer shadow-xs"
+              >
+                <option value="ALL">All Staff</option>
+                {employees
+                  .filter((e) => e.user)
+                  .map((e) => (
+                    <option key={e.user.id} value={e.user.id}>
+                      Dr. {e.user.first_name} {e.user.last_name} ({e.designation || 'Staff'})
+                    </option>
+                  ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Date Filter (Daily by default) */}
+          <DateRangeFilter value={reportDateFilter} onChange={setReportDateFilter} />
+        </div>
+
+        {/* Filter Tabs (Modality) */}
+        <div className="flex items-center gap-2 border-b border-border pb-2">
+          {['', 'USG', 'LAB', 'XRAY', 'ECG'].map((type) => (
+            <button
+              key={type}
+              onClick={() => setTestTypeFilter(type)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                testTypeFilter === type
+                  ? 'bg-blue-600 text-white'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+            >
+              {type === '' ? 'All Modalities' : type}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Reports List */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {loading ? (
-          <div className="col-span-2 py-12 text-center text-xs text-muted-foreground">
-            Loading diagnostic reports...
-          </div>
-        ) : reports.length === 0 ? (
-          <div className="col-span-2 py-16 text-center text-xs text-muted-foreground space-y-1">
-            <Activity className="h-8 w-8 mx-auto text-muted-foreground opacity-30" />
-            <p className="font-semibold text-foreground">
-              No Diagnostic Reports Found
-            </p>
-            <p className="text-[11px]">Create an ultrasound or lab report to begin.</p>
-          </div>
-        ) : (
-          reports.map((r) => {
-            const isSigned = r.status === 'SIGNED_OFF';
-            return (
-              <div
-                key={r.id}
-                className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-3.5 flex flex-col justify-between"
-              >
+      {(() => {
+        const displayedReports = reports.filter((r) => {
+          // 1. Date filter (Daily by default)
+          if (!filterMatchesDate(r.created_at, reportDateFilter)) return false;
+
+          // 2. Doctor filter
+          if (
+            reportDoctorFilter !== 'ALL' &&
+            r.doctor_id !== reportDoctorFilter &&
+            r.pathologist_id !== reportDoctorFilter
+          ) {
+            return false;
+          }
+
+          // 3. Search query
+          if (reportPatientSearch.trim()) {
+            const q = reportPatientSearch.trim().toLowerCase();
+            const pName = `${r.patient?.first_name || ''} ${r.patient?.last_name || ''}`.toLowerCase();
+            const uhid = (r.patient?.uhid || '').toLowerCase();
+            const repNum = (r.report_number || '').toLowerCase();
+            const tName = (r.test_name || '').toLowerCase();
+            if (
+              !pName.includes(q) &&
+              !uhid.includes(q) &&
+              !repNum.includes(q) &&
+              !tName.includes(q)
+            ) {
+              return false;
+            }
+          }
+
+          return true;
+        });
+
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {loading ? (
+              <div className="col-span-2 py-12 text-center text-xs text-muted-foreground">
+                Loading diagnostic reports...
+              </div>
+            ) : displayedReports.length === 0 ? (
+              <div className="col-span-2 py-16 text-center text-xs text-muted-foreground space-y-1">
+                <Activity className="h-8 w-8 mx-auto text-muted-foreground opacity-30" />
+                <p className="font-semibold text-foreground">
+                  No Diagnostic Reports Found
+                </p>
+                <p className="text-[11px]">No reports match the selected date or filter criteria.</p>
+              </div>
+            ) : (
+              displayedReports.map((r) => {
+                const isSigned = r.status === 'SIGNED_OFF';
+                return (
+                  <div
+                    key={r.id}
+                    className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-3.5 flex flex-col justify-between"
+                  >
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
@@ -583,6 +674,8 @@ export default function DiagnosticsPage() {
           })
         )}
       </div>
+    );
+  })()}
 
       {/* New Diagnostic Report Modal */}
       {isModalOpen && (

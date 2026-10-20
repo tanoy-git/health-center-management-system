@@ -40,6 +40,7 @@ export class DiagnosticsService {
     const where: any = {
       center_id: centerId,
       is_queued: true,
+      is_refunded: false, // exclude refunded items
       invoice: {
         deleted_at: null,
       },
@@ -155,10 +156,34 @@ export class DiagnosticsService {
     });
   }
 
-  async getReports(centerId: string, testType?: string, status?: string) {
+  async getReports(
+    centerId: string,
+    testType?: string,
+    status?: string,
+    doctorId?: string,
+    search?: string,
+    startDate?: string,
+    endDate?: string,
+  ) {
     const where: any = { center_id: centerId };
-    if (testType) where.test_type = testType;
+    if (testType && testType !== 'ALL') where.test_type = testType;
     if (status) where.status = status;
+    if (doctorId) where.doctor_id = doctorId;
+    if (startDate && endDate) {
+      where.created_at = {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      };
+    }
+    if (search) {
+      where.OR = [
+        { report_number: { contains: search, mode: 'insensitive' } },
+        { test_name: { contains: search, mode: 'insensitive' } },
+        { patient: { first_name: { contains: search, mode: 'insensitive' } } },
+        { patient: { last_name: { contains: search, mode: 'insensitive' } } },
+        { patient: { uhid: { contains: search, mode: 'insensitive' } } },
+      ];
+    }
 
     return this.prisma.diagnosticReport.findMany({
       where,

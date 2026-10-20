@@ -316,9 +316,13 @@ model InvoiceItem {
   item_name   String
   category    String
   unit_price  Decimal  @db.Decimal(10, 2)
-  quantity    Int      @default(1)
-  total_price Decimal  @db.Decimal(10, 2)
-  is_queued   Boolean  @default(true) // Patient Queue flag: true = in queue, false = completed/out
+  quantity      Int       @default(1)
+  total_price   Decimal   @db.Decimal(10, 2)
+  is_queued     Boolean   @default(true) // Patient Queue flag: true = in queue, false = completed/out
+  is_refunded   Boolean   @default(false)
+  refund_reason String?
+  refunded_at   DateTime?
+  refunded_by   String?
 
   // Audit & Soft Delete
   created_at  DateTime @default(now())
@@ -395,6 +399,8 @@ model Prescription {
   diagnosis           String?   @db.Text
   vitals              String?   @db.Text // JSON string: { bp, pulse, temp, weight, spo2 }
   follow_up_date      DateTime?
+  prescription_type   String    @default("GENERAL") // GENERAL, EYE
+  eye_data            String?   @db.Text // JSON string for eye measurements: { visualAcuity, refraction, iop, slitLamp, fundus, lensRecommendation, remarks }
   status              String    @default("ACTIVE")
 
   // Audit & Soft Delete

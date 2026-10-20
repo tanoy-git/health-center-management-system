@@ -63,8 +63,10 @@ export class BillingController {
     @CurrentTenant() centerId: string,
     @Query('search') search?: string,
     @Query('status') status?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
-    return this.billingService.getInvoices(centerId, search, status);
+    return this.billingService.getInvoices(centerId, search, status, startDate, endDate);
   }
 
   @Get('invoices/:id')
@@ -85,6 +87,34 @@ export class BillingController {
     @Body() body: UpdateInvoiceDto,
   ) {
     return this.billingService.updateInvoice(id, centerId, userId, body);
+  }
+
+  @Post('invoices/:id/items/:itemId/refund')
+  @RequirePermissions('billing:refund:manage')
+  async refundInvoiceItem(
+    @Param('id') invoiceId: string,
+    @Param('itemId') itemId: string,
+    @CurrentTenant() centerId: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: { reason: string },
+  ) {
+    return this.billingService.refundInvoiceItem(
+      invoiceId,
+      itemId,
+      centerId,
+      userId,
+      body.reason,
+    );
+  }
+
+  @Get('refunds')
+  @RequirePermissions('billing:invoices:read')
+  async getRefunds(
+    @CurrentTenant() centerId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.billingService.getRefunds(centerId, startDate, endDate);
   }
 
   @Get('invoices/:id/receipt')

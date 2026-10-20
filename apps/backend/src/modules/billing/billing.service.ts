@@ -204,10 +204,22 @@ export class BillingService {
     });
   }
 
-  async getInvoices(centerId: string, search?: string, status?: string) {
+  async getInvoices(
+    centerId: string,
+    search?: string,
+    status?: string,
+    startDate?: string,
+    endDate?: string,
+  ) {
     const where: any = { center_id: centerId };
     if (status) {
       where.payment_status = status;
+    }
+    if (startDate && endDate) {
+      where.created_at = {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      };
     }
     if (search) {
       where.OR = [
@@ -262,6 +274,15 @@ export class BillingService {
     dto: UpdateInvoiceDto,
   ) {
     const existing = await this.getInvoiceById(id, centerId);
+
+    // Enforce 3-day edit rule
+    const ageInMs = Date.now() - new Date(existing.created_at).getTime();
+    const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
+    if (ageInDays > 3) {
+      throw new BadRequestException(
+        'Invoice edit locked: Invoices can only be edited within 3 days of purchase.',
+      );
+    }
 
     const subtotal = Number(existing.subtotal);
     let discountAmount =
@@ -321,6 +342,166 @@ export class BillingService {
       });
 
       return updated;
+    });
+  }
+
+  // ---------------------------------------------
+  // SAME-DAY UNFULFILLED ITEM REFUND ENGINE
+  // ---------------------------------------------
+  async refundInvoiceItem(
+    invoiceId: string,
+    itemId: string,
+    centerId: string,
+    userId: string,
+    reason: string,
+  ) {
+    if (!reason || reason.trim().length === 0) {
+      throw new BadRequestException('A reason must be provided for the refund.');
+    }
+
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, center_id: centerId },
+      include: {
+        items: true,
+        patient: true,
+      },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException('Invoice not found at this center');
+    }
+
+    const item = invoice.items.find((i) => i.id === itemId);
+    if (!item) {
+      throw new NotFoundException('Invoice item not found on this invoice');
+    }
+
+    if (item.is_refunded) {
+      throw new BadRequestException('This service item has already been refunded.');
+    }
+
+    // Rule 1: Same calendar day only
+    const invoiceDate = new Date(invoice.created_at);
+    const today = new Date();
+    const isSameDay =
+      invoiceDate.getFullYear() === today.getFullYear() &&
+      invoiceDate.getMonth() === today.getMonth() &&
+      invoiceDate.getDate() === today.getDate();
+
+    if (!isSameDay) {
+      throw new BadRequestException(
+        'Refund policy violation: Service items are strictly refundable ONLY on the same calendar day the bill was paid.',
+      );
+    }
+
+    // Rule 2: Cannot be refunded if report or prescription has already been created/fulfilled
+    if (!item.is_queued) {
+      throw new BadRequestException(
+        'Refund policy violation: Cannot refund this item because the clinical report, test, or prescription has already been generated.',
+      );
+    }
+
+    const refundAmount = Number(item.total_price);
+    const currentSubtotal = Number(invoice.subtotal);
+    const newSubtotal = Math.max(0, currentSubtotal - refundAmount);
+
+    let discountAmount = Number(invoice.discount_amount);
+    const discountPercent = Number(invoice.discount_percent);
+    if (discountPercent > 0) {
+      discountAmount = (newSubtotal * discountPercent) / 100;
+    } else {
+      discountAmount = Math.min(discountAmount, newSubtotal);
+    }
+
+    const newTotal = Math.max(0, newSubtotal - discountAmount);
+    const currentPaid = Number(invoice.paid_amount);
+    const newPaid = Math.max(0, currentPaid - refundAmount);
+    const newBalance = Math.max(0, newTotal - newPaid);
+    const newPaymentStatus = newBalance === 0 ? 'PAID' : newPaid > 0 ? 'PARTIAL' : 'DUE';
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Mark item refunded and remove from queue
+      const updatedItem = await tx.invoiceItem.update({
+        where: { id: itemId },
+        data: {
+          is_refunded: true,
+          refund_reason: reason.trim(),
+          refunded_at: new Date(),
+          refunded_by: userId,
+          is_queued: false,
+        },
+      });
+
+      // 2. Adjust invoice totals
+      const updatedInvoice = await tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          subtotal: new Prisma.Decimal(newSubtotal),
+          discount_amount: new Prisma.Decimal(discountAmount),
+          total_amount: new Prisma.Decimal(newTotal),
+          paid_amount: new Prisma.Decimal(newPaid),
+          balance_amount: new Prisma.Decimal(newBalance),
+          payment_status: newPaymentStatus,
+          updated_by: userId,
+        },
+        include: {
+          items: true,
+          patient: true,
+        },
+      });
+
+      // 3. Strict Audit Log
+      await tx.invoiceAuditLog.create({
+        data: {
+          center_id: centerId,
+          invoice_id: invoiceId,
+          action: 'REFUNDED',
+          performed_by: userId,
+          details: JSON.stringify({
+            event: 'Item refunded',
+            itemId: item.id,
+            itemName: item.item_name,
+            refundAmount,
+            reason: reason.trim(),
+            refundedAt: new Date().toISOString(),
+            previousTotal: Number(invoice.total_amount),
+            newTotal,
+          }),
+          created_by: userId,
+        },
+      });
+
+      return {
+        refundedItem: updatedItem,
+        invoice: updatedInvoice,
+        refundAmount,
+      };
+    });
+  }
+
+  async getRefunds(centerId: string, startDate?: string, endDate?: string) {
+    const where: any = {
+      center_id: centerId,
+      is_refunded: true,
+    };
+
+    if (startDate && endDate) {
+      where.refunded_at = {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      };
+    }
+
+    return this.prisma.invoiceItem.findMany({
+      where,
+      orderBy: { refunded_at: 'desc' },
+      include: {
+        invoice: {
+          include: {
+            patient: true,
+          },
+        },
+      },
     });
   }
 

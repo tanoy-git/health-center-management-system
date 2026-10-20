@@ -18,6 +18,10 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  RotateCcw,
+  Eye,
+  Pill,
+  BarChart3,
 } from 'lucide-react';
 
 interface NavItem {
@@ -52,9 +56,27 @@ const navItems: NavItem[] = [
     permission: 'billing:invoices:read',
   },
   {
+    name: 'Invoice Item Refunds',
+    href: '/refunds',
+    icon: RotateCcw,
+    permission: 'billing:refund:manage',
+  },
+  {
     name: 'Prescription Engine',
     href: '/prescriptions',
     icon: Stethoscope,
+    permission: 'clinical:prescription:read',
+  },
+  {
+    name: 'Eye Prescriptions',
+    href: '/eye-prescriptions',
+    icon: Eye,
+    permission: 'clinical:eye:prescription',
+  },
+  {
+    name: 'Medicines & Catalog',
+    href: '/medicines',
+    icon: Pill,
     permission: 'clinical:prescription:read',
   },
   {
@@ -62,6 +84,12 @@ const navItems: NavItem[] = [
     href: '/diagnostics',
     icon: Activity,
     permission: 'diagnostics:reports:read',
+  },
+  {
+    name: 'Executive Reports',
+    href: '/reports',
+    icon: BarChart3,
+    permission: 'reports:view',
   },
   {
     name: 'HR & Payroll',

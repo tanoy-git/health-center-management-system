@@ -23,6 +23,12 @@ import {
   Sparkles,
 } from 'lucide-react';
 
+import DateRangeFilter, {
+  DateFilterValue,
+  getDefaultDateFilter,
+  filterMatchesDate,
+} from '@/components/DateRangeFilter';
+
 interface MedicineRow {
   medicineId?: string;
   medicineName: string;
@@ -36,8 +42,13 @@ export default function PrescriptionsPage() {
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
   const [patients, setPatients] = useState<any[]>([]);
   const [medicines, setMedicines] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+
+  // Filters for Issued Prescriptions
+  const [rxDateFilter, setRxDateFilter] = useState<DateFilterValue>(getDefaultDateFilter());
+  const [rxDoctorFilter, setRxDoctorFilter] = useState('ALL');
+  const [rxPatientSearch, setRxPatientSearch] = useState('');
 
   // Patient Queue State
   const [queueItems, setQueueItems] = useState<any[]>([]);
@@ -98,6 +109,9 @@ export default function PrescriptionsPage() {
       if (ptList && ptList.length > 0) {
         setSelectedPatientId(ptList[0].id);
       }
+
+      const empList = await apiRequest('/hr/employees').catch(() => []);
+      setEmployees(empList || []);
 
       const medList = await apiRequest('/clinical/medicines');
       setMedicines(medList || []);
@@ -420,87 +434,163 @@ export default function PrescriptionsPage() {
           );
         })()}
       </div>
+      {/* Prescriptions Issued List & Filters */}
+      <div className="space-y-3">
+        {/* Filter Toolbar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-xl border border-border bg-card shadow-xs">
+          <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
+            {/* Search by Patient / UHID / Rx # */}
+            <div className="relative flex-1 min-w-[160px] max-w-[240px]">
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                value={rxPatientSearch}
+                onChange={(e) => setRxPatientSearch(e.target.value)}
+                placeholder="Filter by Patient, UHID, or Rx #..."
+                className="w-full rounded-lg border border-input bg-background pl-8 pr-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-xs"
+              />
+            </div>
 
-      {/* Prescriptions List */}
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-border bg-muted/20 flex items-center justify-between">
-          <span className="text-xs font-semibold text-foreground">
-            Prescriptions Issued ({prescriptions.length})
-          </span>
-          <span className="text-[11px] text-muted-foreground">
-            Printable PDF generator with hospital header and doctor seal
-          </span>
+            {/* Filter by Doctor */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-muted-foreground">Doctor:</span>
+              <select
+                value={rxDoctorFilter}
+                onChange={(e) => setRxDoctorFilter(e.target.value)}
+                className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer shadow-xs"
+              >
+                <option value="ALL">All Doctors</option>
+                {employees
+                  .filter((e) => e.user)
+                  .map((e) => (
+                    <option key={e.user.id} value={e.user.id}>
+                      Dr. {e.user.first_name} {e.user.last_name} ({e.designation || 'Doctor'})
+                    </option>
+                  ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Date Filter (Daily by default) */}
+          <DateRangeFilter value={rxDateFilter} onChange={setRxDateFilter} />
         </div>
 
-        {loading ? (
-          <div className="py-12 text-center text-xs text-muted-foreground">
-            Loading prescriptions...
-          </div>
-        ) : prescriptions.length === 0 ? (
-          <div className="py-16 text-center text-xs text-muted-foreground space-y-1">
-            <Stethoscope className="h-8 w-8 mx-auto text-muted-foreground opacity-30" />
-            <p className="font-semibold text-foreground">
-              No Prescriptions Issued Yet
-            </p>
-            <p className="text-[11px]">
-              Doctors can prescribe medications and produce clinical PDFs.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-muted/40 text-[11px] font-semibold text-muted-foreground border-b border-border">
-                <tr>
-                  <th className="py-2.5 px-4">Rx Number</th>
-                  <th className="py-2.5 px-4">Date</th>
-                  <th className="py-2.5 px-4">Patient Demographics</th>
-                  <th className="py-2.5 px-4">Diagnosis / Notes</th>
-                  <th className="py-2.5 px-4">Medicines</th>
-                  <th className="py-2.5 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {prescriptions.map((rx) => (
-                  <tr key={rx.id} className="hover:bg-muted/40 transition-colors">
-                    <td className="py-3 px-4 font-mono font-bold text-blue-600 dark:text-blue-400">
-                      {rx.prescription_number}
-                    </td>
-                    <td className="py-3 px-4 text-muted-foreground">
-                      {new Date(rx.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="py-3 px-4">
-                      <p className="font-semibold text-foreground">
-                        {rx.patient?.first_name} {rx.patient?.last_name}
-                      </p>
-                      <span className="text-[10px] text-muted-foreground font-mono">
-                        {rx.patient?.uhid}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-muted-foreground max-w-xs truncate">
-                      {rx.diagnosis || rx.clinical_notes || 'Routine checkup'}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="rounded bg-muted px-2 py-0.5 text-[10px] font-semibold">
-                        {rx.items?.length || 0} drugs
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <button
-                        onClick={() =>
-                          handleDownloadPdf(rx.id, rx.prescription_number)
-                        }
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-border hover:bg-muted px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 shadow-sm transition-colors"
-                      >
-                        <FileDown className="h-3.5 w-3.5" />
-                        <span>Download PDF</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {/* Table Box */}
+        {(() => {
+          const displayedPrescriptions = prescriptions.filter((rx) => {
+            // 1. Date filter (Daily by default)
+            if (!filterMatchesDate(rx.created_at, rxDateFilter)) return false;
+
+            // 2. Doctor filter
+            if (rxDoctorFilter !== 'ALL' && rx.doctor_id !== rxDoctorFilter) return false;
+
+            // 3. Patient Name / UHID filter
+            if (rxPatientSearch.trim()) {
+              const q = rxPatientSearch.trim().toLowerCase();
+              const pName = `${rx.patient?.first_name || ''} ${rx.patient?.last_name || ''}`.toLowerCase();
+              const uhid = (rx.patient?.uhid || '').toLowerCase();
+              const rxNum = (rx.prescription_number || '').toLowerCase();
+              if (!pName.includes(q) && !uhid.includes(q) && !rxNum.includes(q)) return false;
+            }
+
+            return true;
+          });
+
+          return (
+            <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-border bg-muted/20 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-foreground">
+                    Prescriptions Issued ({displayedPrescriptions.length})
+                  </span>
+                  {displayedPrescriptions.length !== prescriptions.length && (
+                    <span className="text-[10px] rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-medium px-2 py-0.5">
+                      Filtered from {prescriptions.length} total
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] text-muted-foreground">
+                  Printable PDF generator with hospital header and doctor seal
+                </span>
+              </div>
+
+              {loading ? (
+                <div className="py-12 text-center text-xs text-muted-foreground">
+                  Loading prescriptions...
+                </div>
+              ) : displayedPrescriptions.length === 0 ? (
+                <div className="py-16 text-center text-xs text-muted-foreground space-y-1">
+                  <Stethoscope className="h-8 w-8 mx-auto text-muted-foreground opacity-30" />
+                  <p className="font-semibold text-foreground">
+                    No Prescriptions Found
+                  </p>
+                  <p className="text-[11px]">
+                    No issued prescriptions match the selected date or search criteria.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-muted/40 text-[11px] font-semibold text-muted-foreground border-b border-border">
+                      <tr>
+                        <th className="py-2.5 px-4">Rx Number</th>
+                        <th className="py-2.5 px-4">Date</th>
+                        <th className="py-2.5 px-4">Patient Demographics</th>
+                        <th className="py-2.5 px-4">Diagnosis / Notes</th>
+                        <th className="py-2.5 px-4">Medicines</th>
+                        <th className="py-2.5 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {displayedPrescriptions.map((rx) => (
+                        <tr key={rx.id} className="hover:bg-muted/40 transition-colors">
+                          <td className="py-3 px-4 font-mono font-bold text-blue-600 dark:text-blue-400">
+                            <div>{rx.prescription_number}</div>
+                            {rx.prescription_type === 'EYE' && (
+                              <span className="inline-block rounded bg-cyan-100 dark:bg-cyan-950/60 px-1.5 py-0.2 text-[9px] font-bold text-cyan-700 dark:text-cyan-300">
+                                EYE RX
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 text-muted-foreground whitespace-nowrap">
+                            {new Date(rx.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="py-3 px-4">
+                            <p className="font-semibold text-foreground">
+                              {rx.patient?.first_name} {rx.patient?.last_name}
+                            </p>
+                            <span className="text-[10px] text-muted-foreground font-mono">
+                              {rx.patient?.uhid}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-muted-foreground max-w-xs truncate">
+                            {rx.diagnosis || rx.clinical_notes || 'Routine checkup'}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="rounded bg-muted px-2 py-0.5 text-[10px] font-semibold">
+                              {rx.items?.length || 0} drugs
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right whitespace-nowrap">
+                            <button
+                              onClick={() =>
+                                handleDownloadPdf(rx.id, rx.prescription_number)
+                              }
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-border hover:bg-muted px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 shadow-sm transition-colors"
+                            >
+                              <FileDown className="h-3.5 w-3.5" />
+                              <span>Download PDF</span>
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Write Prescription Modal */}

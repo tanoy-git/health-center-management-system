@@ -19,6 +19,11 @@ import {
   Lock,
   Edit2,
 } from 'lucide-react';
+import DateRangeFilter, {
+  DateFilterValue,
+  getDefaultDateFilter,
+  filterMatchesDate,
+} from '@/components/DateRangeFilter';
 
 export default function HrPage() {
   const { activeCenter, hasPermission } = useAuth();
@@ -27,6 +32,7 @@ export default function HrPage() {
   const [employees, setEmployees] = useState<any[]>([]);
   const [attendances, setAttendances] = useState<any[]>([]);
   const [payrolls, setPayrolls] = useState<any[]>([]);
+  const [hrDateFilter, setHrDateFilter] = useState<DateFilterValue>(getDefaultDateFilter());
   const [monthYear, setMonthYear] = useState('2026-10');
   const [loading, setLoading] = useState(true);
 
@@ -232,6 +238,31 @@ export default function HrPage() {
     }
   };
 
+  useEffect(() => {
+    if (hrDateFilter.mode === 'monthly') {
+      const formatted = `${hrDateFilter.year}-${String(hrDateFilter.month).padStart(2, '0')}`;
+      if (formatted !== monthYear) {
+        setMonthYear(formatted);
+      }
+    }
+  }, [hrDateFilter]);
+
+  const filteredAttendances = attendances.filter((att) =>
+    filterMatchesDate(att.punch_in || att.created_at, hrDateFilter)
+  );
+
+  const filteredEmployees = employees.filter((emp) =>
+    filterMatchesDate(emp.created_at, hrDateFilter)
+  );
+
+  const filteredPayrolls = payrolls.filter((p) => {
+    if (hrDateFilter.mode === 'monthly') {
+      const filterMonthStr = `${hrDateFilter.year}-${String(hrDateFilter.month).padStart(2, '0')}`;
+      return p.month_year === filterMonthStr || filterMatchesDate(p.created_at, hrDateFilter);
+    }
+    return filterMatchesDate(p.created_at, hrDateFilter);
+  });
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -316,13 +347,24 @@ export default function HrPage() {
         </button>
       </div>
 
+      {/* Unified Date, Range, Monthly Filter */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-card border border-border p-3 rounded-xl shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Filter Records:</span>
+          <DateRangeFilter value={hrDateFilter} onChange={setHrDateFilter} />
+        </div>
+        <div className="text-xs text-muted-foreground">
+          Showing {activeTab === 'attendance' ? `${filteredAttendances.length} attendance record(s)` : activeTab === 'employees' ? `${filteredEmployees.length} employee(s)` : `${filteredPayrolls.length} salary slip(s)`}
+        </div>
+      </div>
+
       {/* Tab 1: Daily Attendance */}
       {activeTab === 'attendance' && (
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
           <div className="p-4 border-b border-border bg-muted/20 flex items-center justify-between">
             <div>
               <span className="text-xs font-semibold text-foreground">
-                Today's Attendance Timeline ({attendances.length})
+                Attendance Timeline ({filteredAttendances.length})
               </span>
               <p className="text-[11px] text-muted-foreground">
                 Automated attendance records created when employees log in to the system
@@ -337,14 +379,14 @@ export default function HrPage() {
             <div className="py-12 text-center text-xs text-muted-foreground">
               Loading attendance records...
             </div>
-          ) : attendances.length === 0 ? (
+          ) : filteredAttendances.length === 0 ? (
             <div className="py-16 text-center text-xs text-muted-foreground space-y-1">
               <Clock className="h-8 w-8 mx-auto text-muted-foreground opacity-30" />
               <p className="font-semibold text-foreground">
-                No Attendance Records Today Yet
+                No Attendance Records Found
               </p>
               <p className="text-[11px]">
-                When an employee logs into this branch, an attendance record is automatically triggered!
+                No punch-in events recorded for the selected filter period.
               </p>
             </div>
           ) : (
@@ -360,7 +402,7 @@ export default function HrPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {attendances.map((att) => (
+                  {filteredAttendances.map((att) => (
                     <tr key={att.id} className="hover:bg-muted/40 transition-colors">
                       <td className="py-3 px-4 font-semibold text-foreground">
                         {att.employee?.user?.first_name}{' '}
@@ -370,10 +412,12 @@ export default function HrPage() {
                         {att.employee?.designation}
                       </td>
                       <td className="py-3 px-4 font-mono text-muted-foreground">
-                        {new Date(att.punch_in).toLocaleTimeString([], {
+                        {new Date(att.punch_in).toLocaleString([], {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
                           hour: '2-digit',
                           minute: '2-digit',
-                          second: '2-digit',
                         })}
                       </td>
                       <td className="py-3 px-4">
@@ -401,7 +445,7 @@ export default function HrPage() {
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
           <div className="p-4 border-b border-border bg-muted/20">
             <span className="text-xs font-semibold text-foreground">
-              Employees Bound to {activeCenter?.name} ({employees.length})
+              Employees Bound to {activeCenter?.name} ({filteredEmployees.length})
             </span>
           </div>
 
@@ -419,7 +463,7 @@ export default function HrPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {employees.map((emp) => (
+                {filteredEmployees.map((emp) => (
                   <tr key={emp.id} className="hover:bg-muted/40 transition-colors">
                     <td className="py-3 px-4 font-mono font-bold text-blue-600 dark:text-blue-400">
                       {emp.employee_code}
@@ -439,7 +483,7 @@ export default function HrPage() {
                       {emp.department}
                     </td>
                     <td className="py-3 px-4 font-mono font-bold text-foreground">
-                      ${Number(emp.base_salary).toFixed(2)}
+                      tk {Number(emp.base_salary).toLocaleString()}
                     </td>
                     <td className="py-3 px-4">
                       <span
@@ -513,7 +557,7 @@ export default function HrPage() {
           <div className="p-4 border-b border-border bg-muted/20 flex items-center justify-between">
             <div>
               <span className="text-xs font-semibold text-foreground">
-                Salary Slips for Month {monthYear} ({payrolls.length})
+                Salary Slips for Month {monthYear} ({filteredPayrolls.length})
               </span>
               <p className="text-[11px] text-muted-foreground">
                 Calculated dynamically based on employee attendance records and base pay
@@ -521,7 +565,7 @@ export default function HrPage() {
             </div>
           </div>
 
-          {payrolls.length === 0 ? (
+          {filteredPayrolls.length === 0 ? (
             <div className="py-16 text-center text-xs text-muted-foreground space-y-2">
               <DollarSign className="h-8 w-8 mx-auto text-muted-foreground opacity-30" />
               <p className="font-semibold text-foreground">
@@ -546,7 +590,7 @@ export default function HrPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {payrolls.map((p) => {
+                  {filteredPayrolls.map((p) => {
                     const isPaid = p.status === 'PAID';
                     return (
                       <tr key={p.id} className="hover:bg-muted/40 transition-colors">
@@ -566,10 +610,10 @@ export default function HrPage() {
                           {p.total_present_days} days
                         </td>
                         <td className="py-3 px-4 font-mono text-muted-foreground">
-                          ${Number(p.base_salary).toFixed(2)}
+                          tk {Number(p.base_salary).toLocaleString()}
                         </td>
                         <td className="py-3 px-4 font-mono font-bold text-foreground text-sm">
-                          ${Number(p.net_salary).toFixed(2)}
+                          tk {Number(p.net_salary).toLocaleString()}
                         </td>
                         <td className="py-3 px-4">
                           <span

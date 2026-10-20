@@ -61,16 +61,21 @@ async function main() {
     { code: 'billing:invoices:create', name: 'Create Invoices', module: 'BILLING', description: 'Can checkout cart and issue bills' },
     { code: 'billing:invoices:override', name: 'Override Discounts', module: 'BILLING', description: 'Can apply custom discount overrides' },
     { code: 'billing:services:manage', name: 'Manage Service Catalog', module: 'BILLING', description: 'Can add and update billable hospital services' },
+    { code: 'billing:refund:manage', name: 'Manage Invoice Refunds', module: 'BILLING', description: 'Can process same-day invoice item refunds' },
 
     // Clinical & Prescription
     { code: 'clinical:prescription:read', name: 'View Prescriptions', module: 'CLINICAL', description: 'Can view patient prescriptions' },
     { code: 'clinical:prescription:write', name: 'Write Prescriptions', module: 'CLINICAL', description: 'Can generate doctor prescriptions with PDF' },
+    { code: 'clinical:eye:prescription', name: 'Manage Eye Prescriptions', module: 'CLINICAL', description: 'Can perform eye examinations and generate eye prescriptions' },
     { code: 'clinical:medicines:manage', name: 'Manage Pharmacy Catalog', module: 'CLINICAL', description: 'Can update medicine inventory' },
 
     // Diagnostics & Reports
     { code: 'diagnostics:reports:read', name: 'View Diagnostic Reports', module: 'DIAGNOSTICS', description: 'Can view Lab/USG reports' },
     { code: 'diagnostics:reports:write', name: 'Create Lab/USG Reports', module: 'DIAGNOSTICS', description: 'Can enter test findings and upload DICOM/images' },
     { code: 'diagnostics:reports:signoff', name: 'Sign-off Reports', module: 'DIAGNOSTICS', description: 'Pathologist digital sign-off authority' },
+
+    // Analytics & System Reports
+    { code: 'reports:view', name: 'View System Analytics & Reports', module: 'REPORTS', description: 'Can view monthly financial, clinical and operational reports' },
   ];
 
   const dbPermissions = [];
@@ -357,6 +362,9 @@ async function main() {
     { code: 'SRV-RAD-02', name: 'Digital Chest X-Ray (PA View)', category: 'RADIOLOGY', price: 75.0, tax_rate: 0 },
     { code: 'SRV-PROC-01', name: '12-Lead Electrocardiogram (ECG)', category: 'PROCEDURE', price: 55.0, tax_rate: 0 },
     { code: 'SRV-PROC-02', name: 'Wound Dressing & Minor Surgical Care', category: 'PROCEDURE', price: 65.0, tax_rate: 0 },
+    { code: 'SRV-EYE-01', name: 'Comprehensive Eye Examination & Vision Test', category: 'EYE', price: 60.0, tax_rate: 0 },
+    { code: 'SRV-EYE-02', name: 'Computerized Refraction & Glass Power Test', category: 'EYE', price: 40.0, tax_rate: 0 },
+    { code: 'SRV-EYE-03', name: 'Slit Lamp Biomicroscopy & Retinal Exam', category: 'EYE', price: 90.0, tax_rate: 0 },
   ];
 
   for (const center of [centerA, centerB]) {

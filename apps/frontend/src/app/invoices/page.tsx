@@ -467,11 +467,10 @@ export default function InvoicesPage() {
 
                       <td className="py-3 px-4 whitespace-nowrap">
                         <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                            inv.payment_status === 'PAID'
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${inv.payment_status === 'PAID'
                               ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
                               : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
-                          }`}
+                            }`}
                         >
                           {inv.payment_status === 'PAID' ? (
                             <CheckCircle className="h-3 w-3" />
@@ -603,11 +602,10 @@ export default function InvoicesPage() {
                       return (
                         <div
                           key={idx}
-                          className={`rounded-lg border p-2.5 text-xs transition-all ${
-                            isFinalized
+                          className={`rounded-lg border p-2.5 text-xs transition-all ${isFinalized
                               ? 'border-amber-200 dark:border-amber-900/40 bg-amber-50/20 dark:bg-amber-950/10'
                               : 'border-border bg-background'
-                          }`}
+                            }`}
                         >
                           <div className="flex items-center justify-between pb-1.5 border-b border-border/40 mb-2">
                             <div className="flex items-center gap-2">
@@ -724,9 +722,8 @@ export default function InvoicesPage() {
                                     return { ...prev, items: updated };
                                   });
                                 }}
-                                className={`w-full rounded border px-2 py-1.5 text-xs font-mono outline-none ${
-                                  isFinalized ? 'bg-muted/60 border-input text-muted-foreground cursor-not-allowed' : 'bg-card border-input text-foreground'
-                                }`}
+                                className={`w-full rounded border px-2 py-1.5 text-xs font-mono outline-none ${isFinalized ? 'bg-muted/60 border-input text-muted-foreground cursor-not-allowed' : 'bg-card border-input text-foreground'
+                                  }`}
                               />
                             </div>
 
@@ -752,9 +749,8 @@ export default function InvoicesPage() {
                                     return { ...prev, items: updated };
                                   });
                                 }}
-                                className={`w-full rounded border px-2 py-1.5 text-xs font-mono outline-none ${
-                                  isFinalized ? 'bg-muted/60 border-input text-muted-foreground cursor-not-allowed' : 'bg-card border-input text-foreground'
-                                }`}
+                                className={`w-full rounded border px-2 py-1.5 text-xs font-mono outline-none ${isFinalized ? 'bg-muted/60 border-input text-muted-foreground cursor-not-allowed' : 'bg-card border-input text-foreground'
+                                  }`}
                               />
                             </div>
                           </div>

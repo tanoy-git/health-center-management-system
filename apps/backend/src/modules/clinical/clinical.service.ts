@@ -57,7 +57,7 @@ export interface CreatePrescriptionDto {
 
 @Injectable()
 export class ClinicalService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   // ---------------------------------------------
   // MEDICINE CATALOG
@@ -564,7 +564,7 @@ export class ClinicalService {
     if (rx.eye_data) {
       try {
         eyeDataObj = typeof rx.eye_data === 'string' ? JSON.parse(rx.eye_data) : rx.eye_data;
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // Vitals Bar
@@ -580,7 +580,7 @@ export class ClinicalService {
           color: rgb(0.2, 0.4, 0.6),
         });
         y -= 18;
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // Diagnosis & Notes

@@ -22,7 +22,7 @@ export interface SignOffReportDto {
 
 @Injectable()
 export class DiagnosticsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   private async generateReportNumber(centerId: string): Promise<string> {
     const now = new Date();
@@ -307,4 +307,5 @@ export class DiagnosticsService {
       },
     });
   }
+}
 }

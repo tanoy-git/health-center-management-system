@@ -24,7 +24,7 @@ import {
 @Controller('diagnostics')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DiagnosticsController {
-  constructor(private readonly diagnosticsService: DiagnosticsService) {}
+  constructor(private readonly diagnosticsService: DiagnosticsService) { }
 
   @Get('queue')
   @RequirePermissions('diagnostics:reports:read')

@@ -419,11 +419,10 @@ export default function EyePrescriptionsPage() {
       <div className="flex items-center gap-2 border-b border-border pb-2">
         <button
           onClick={() => setActiveTab('queue')}
-          className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
-            activeTab === 'queue'
+          className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${activeTab === 'queue'
               ? 'bg-blue-600 text-white shadow-sm'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-          }`}
+            }`}
         >
           <Clock className="h-3.5 w-3.5" />
           <span>Eye Examination Queue ({queue.length})</span>
@@ -431,11 +430,10 @@ export default function EyePrescriptionsPage() {
 
         <button
           onClick={() => setActiveTab('history')}
-          className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${
-            activeTab === 'history'
+          className={`flex items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors ${activeTab === 'history'
               ? 'bg-blue-600 text-white shadow-sm'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-          }`}
+            }`}
         >
           <FileText className="h-3.5 w-3.5" />
           <span>Issued Eye Prescriptions</span>

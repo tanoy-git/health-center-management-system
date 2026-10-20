@@ -27,7 +27,7 @@ import {
 @Controller('clinical')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ClinicalController {
-  constructor(private readonly clinicalService: ClinicalService) {}
+  constructor(private readonly clinicalService: ClinicalService) { }
 
   @Get('medicines')
   @RequirePermissions('clinical:prescription:read')

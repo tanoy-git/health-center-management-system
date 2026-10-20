@@ -322,27 +322,25 @@ export default function DiagnosticsPage() {
               tab === 'ALL'
                 ? queueItems.length
                 : queueItems.filter(
-                    (q) => resolveQueueItemModality(q) === tab
-                  ).length;
+                  (q) => resolveQueueItemModality(q) === tab
+                ).length;
             const isSelected = selectedQueueTab === tab;
 
             return (
               <button
                 key={tab}
                 onClick={() => setSelectedQueueTab(tab)}
-                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all ${
-                  isSelected
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all ${isSelected
                     ? 'bg-purple-600 text-white shadow-sm'
                     : 'border border-border bg-background hover:bg-muted text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 <span>{tab === 'ALL' ? 'All Waiting' : tab}</span>
                 <span
-                  className={`rounded-full px-1.5 py-0.2 text-[9px] font-bold ${
-                    isSelected
+                  className={`rounded-full px-1.5 py-0.2 text-[9px] font-bold ${isSelected
                       ? 'bg-white/20 text-white'
                       : 'bg-muted text-muted-foreground'
-                  }`}
+                    }`}
                 >
                   {count}
                 </span>
@@ -388,10 +386,10 @@ export default function DiagnosticsPage() {
                   modality === 'USG'
                     ? 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
                     : modality === 'LAB'
-                    ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                    : modality === 'XRAY'
-                    ? 'bg-cyan-100 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800'
-                    : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800';
+                      ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                      : modality === 'XRAY'
+                        ? 'bg-cyan-100 dark:bg-cyan-950/60 text-cyan-700 dark:text-cyan-300 border-cyan-200 dark:border-cyan-800'
+                        : 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800';
 
                 return (
                   <div
@@ -528,11 +526,10 @@ export default function DiagnosticsPage() {
             <button
               key={type}
               onClick={() => setTestTypeFilter(type)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                testTypeFilter === type
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${testTypeFilter === type
                   ? 'bg-blue-600 text-white'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
+                }`}
             >
               {type === '' ? 'All Modalities' : type}
             </button>
@@ -597,85 +594,84 @@ export default function DiagnosticsPage() {
                     key={r.id}
                     className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-3.5 flex flex-col justify-between"
                   >
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
-                      {r.report_number}
-                    </span>
-                    <span
-                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        isSigned
-                          ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
-                          : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
-                      }`}
-                    >
-                      {isSigned ? (
-                        <CheckCircle2 className="h-3 w-3" />
-                      ) : (
-                        <Clock className="h-3 w-3" />
-                      )}
-                      <span>{r.status}</span>
-                    </span>
-                  </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs font-bold text-blue-600 dark:text-blue-400">
+                          {r.report_number}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${isSigned
+                              ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                            }`}
+                        >
+                          {isSigned ? (
+                            <CheckCircle2 className="h-3 w-3" />
+                          ) : (
+                            <Clock className="h-3 w-3" />
+                          )}
+                          <span>{r.status}</span>
+                        </span>
+                      </div>
 
-                  <div>
-                    <h3 className="text-sm font-bold text-foreground">
-                      {r.test_name}
-                    </h3>
-                    <p className="text-xs text-muted-foreground">
-                      Patient: <span className="font-semibold text-foreground">{r.patient?.first_name} {r.patient?.last_name}</span> ({r.patient?.uhid})
-                    </p>
-                  </div>
+                      <div>
+                        <h3 className="text-sm font-bold text-foreground">
+                          {r.test_name}
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                          Patient: <span className="font-semibold text-foreground">{r.patient?.first_name} {r.patient?.last_name}</span> ({r.patient?.uhid})
+                        </p>
+                      </div>
 
-                  <div className="rounded-lg bg-muted/40 p-3 text-xs space-y-1">
-                    <span className="text-[10px] uppercase font-bold text-muted-foreground">
-                      Clinical Findings & Impression
-                    </span>
-                    <p className="text-[11px] text-foreground leading-relaxed line-clamp-3">
-                      {r.findings}
-                    </p>
-                    {r.impression && (
-                      <p className="text-[11px] font-semibold text-blue-700 dark:text-blue-300 mt-1">
-                        Impression: {r.impression}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between pt-3 border-t border-border/80 text-xs">
-                  <span className="text-[11px] text-muted-foreground">
-                    {new Date(r.created_at).toLocaleDateString()}
-                  </span>
-
-                  {isSigned ? (
-                    <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-semibold">
-                      <ShieldCheck className="h-4 w-4" />
-                      <span>Pathologist Verified</span>
+                      <div className="rounded-lg bg-muted/40 p-3 text-xs space-y-1">
+                        <span className="text-[10px] uppercase font-bold text-muted-foreground">
+                          Clinical Findings & Impression
+                        </span>
+                        <p className="text-[11px] text-foreground leading-relaxed line-clamp-3">
+                          {r.findings}
+                        </p>
+                        {r.impression && (
+                          <p className="text-[11px] font-semibold text-blue-700 dark:text-blue-300 mt-1">
+                            Impression: {r.impression}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  ) : hasPermission('diagnostics:reports:signoff') ? (
-                    <button
-                      onClick={() => {
-                        setTargetReport(r);
-                        setSignOffModalOpen(true);
-                      }}
-                      className="flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
-                    >
-                      <ShieldCheck className="h-3.5 w-3.5" />
-                      <span>Digital Sign-Off</span>
-                    </button>
-                  ) : (
-                    <span className="text-[11px] text-amber-600 font-medium">
-                      Pending Pathologist Review
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-    );
-  })()}
+
+                    <div className="flex items-center justify-between pt-3 border-t border-border/80 text-xs">
+                      <span className="text-[11px] text-muted-foreground">
+                        {new Date(r.created_at).toLocaleDateString()}
+                      </span>
+
+                      {isSigned ? (
+                        <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-semibold">
+                          <ShieldCheck className="h-4 w-4" />
+                          <span>Pathologist Verified</span>
+                        </div>
+                      ) : hasPermission('diagnostics:reports:signoff') ? (
+                        <button
+                          onClick={() => {
+                            setTargetReport(r);
+                            setSignOffModalOpen(true);
+                          }}
+                          className="flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
+                        >
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                          <span>Digital Sign-Off</span>
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-amber-600 font-medium">
+                          Pending Pathologist Review
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        );
+      })()}
 
       {/* New Diagnostic Report Modal */}
       {isModalOpen && (

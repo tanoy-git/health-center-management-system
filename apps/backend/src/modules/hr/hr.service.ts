@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../redis/redis.service';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
@@ -21,6 +22,19 @@ export interface CreateEmployeeDto {
   centerId?: string;
 }
 
+export interface UpdateEmployeeDto {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  roleId?: string;
+  employeeCode?: string;
+  designation?: string;
+  department?: string;
+  baseSalary?: number;
+  status?: string;
+  centerId?: string;
+}
+
 export interface ManualPunchDto {
   employeeId: string;
   date?: string;
@@ -31,7 +45,10 @@ export interface ManualPunchDto {
 
 @Injectable()
 export class HrService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private redisService: RedisService,
+  ) {}
 
   async getEmployees(centerId?: string) {
     const whereClause: any = {};
@@ -148,6 +165,142 @@ export class HrService {
 
       return employee;
     });
+  }
+
+  async updateEmployeeStatus(employeeId: string, status: string, updaterId?: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: { user: true },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const emp = await tx.employee.update({
+        where: { id: employeeId },
+        data: {
+          status,
+          updated_by: updaterId,
+        },
+        include: {
+          user: true,
+          center: true,
+        },
+      });
+
+      // Synchronize associated user status
+      const userStatus = status === 'ACTIVE' ? 'ACTIVE' : 'INACTIVE';
+      if (employee.user_id) {
+        await tx.user.update({
+          where: { id: employee.user_id },
+          data: {
+            status: userStatus,
+            updated_by: updaterId,
+          },
+        });
+      }
+
+      return emp;
+    });
+
+    // Invalidate user sessions if status is changed to inactive/terminated
+    if (status !== 'ACTIVE' && employee.user_id) {
+      await this.redisService.invalidateAllUserSessions(employee.user_id);
+    }
+
+    return updated;
+  }
+
+  async updateEmployee(employeeId: string, dto: UpdateEmployeeDto, updaterId?: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: { user: true },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    if (dto.employeeCode && dto.employeeCode !== employee.employee_code) {
+      const existing = await this.prisma.employee.findUnique({
+        where: { employee_code: dto.employeeCode },
+      });
+      if (existing) {
+        throw new BadRequestException(`Employee code ${dto.employeeCode} already exists`);
+      }
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // 1. Update user fields
+      if (employee.user_id) {
+        const userUpdateData: any = {
+          updated_by: updaterId,
+        };
+        if (dto.firstName) userUpdateData.first_name = dto.firstName.trim();
+        if (dto.lastName) userUpdateData.last_name = dto.lastName.trim();
+        if (dto.phone !== undefined) userUpdateData.phone = dto.phone;
+        if (dto.roleId) userUpdateData.role_id = dto.roleId;
+        if (dto.status) {
+          userUpdateData.status = dto.status === 'ACTIVE' ? 'ACTIVE' : 'INACTIVE';
+        }
+        if (dto.centerId) userUpdateData.center_id = dto.centerId;
+
+        await tx.user.update({
+          where: { id: employee.user_id },
+          data: userUpdateData,
+        });
+      }
+
+      // 2. Update employee fields
+      const empUpdateData: any = {
+        updated_by: updaterId,
+      };
+      if (dto.employeeCode) empUpdateData.employee_code = dto.employeeCode.trim();
+      if (dto.designation) empUpdateData.designation = dto.designation.trim();
+      if (dto.department) empUpdateData.department = dto.department.trim();
+      if (dto.baseSalary !== undefined) empUpdateData.base_salary = new Prisma.Decimal(dto.baseSalary);
+      if (dto.status) empUpdateData.status = dto.status;
+      if (dto.centerId) empUpdateData.center_id = dto.centerId;
+
+      return tx.employee.update({
+        where: { id: employeeId },
+        data: empUpdateData,
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              first_name: true,
+              last_name: true,
+              phone: true,
+              status: true,
+              role: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          center: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+            },
+          },
+        },
+      });
+    });
+
+    // Invalidate sessions if employee status is deactivated
+    if (dto.status && dto.status !== 'ACTIVE' && employee.user_id) {
+      await this.redisService.invalidateAllUserSessions(employee.user_id);
+    }
+
+    return updated;
   }
 
   async getDailyAttendance(centerId: string, dateStr?: string) {

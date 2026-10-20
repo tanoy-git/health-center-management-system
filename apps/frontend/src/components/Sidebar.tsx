@@ -115,13 +115,17 @@ export default function Sidebar() {
         {/* Mobile Drawer Header */}
         <div className="flex h-16 items-center justify-between px-4 border-b border-border bg-muted/20">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm">
-              <ShieldCheck className="h-5 w-5" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-border/80 shadow-sm p-1 shrink-0 overflow-hidden">
+              <img
+                src="/carewave-logo-cropped.png"
+                alt="CareWave"
+                className="h-full w-full object-contain"
+              />
             </div>
             <div>
-              <span className="font-bold text-sm tracking-tight text-foreground">AEGIS HIS</span>
+              <span className="font-bold text-sm tracking-tight text-foreground">CareWave</span>
               <span className="ml-1.5 rounded bg-blue-100 dark:bg-blue-900/50 px-1 py-0.5 text-[9px] font-semibold text-blue-700 dark:text-blue-300">
-                v2.0
+                v1.0
               </span>
             </div>
           </div>

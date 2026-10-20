@@ -9,7 +9,6 @@ import {
   Moon,
   Sun,
   LogOut,
-  ShieldCheck,
   User as UserIcon,
   Check,
   KeyRound,
@@ -46,20 +45,24 @@ export default function Header() {
           </button>
 
           <div className="flex items-center gap-2 sm:gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-tr from-blue-600 to-cyan-500 text-white shadow-md shadow-blue-500/20 shrink-0">
-              <ShieldCheck className="h-5 w-5" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white border border-border/80 shadow-sm p-1 shrink-0 overflow-hidden">
+              <img
+                src="/carewave-logo-cropped.png"
+                alt="CareWave"
+                className="h-full w-full object-contain"
+              />
             </div>
             <div>
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <span className="font-bold text-sm sm:text-base tracking-tight text-foreground whitespace-nowrap">
-                  AEGIS HIS
+                  CareWave
                 </span>
                 <span className="rounded bg-blue-100 dark:bg-blue-900/50 px-1 py-0.5 text-[9px] sm:text-[10px] font-semibold text-blue-700 dark:text-blue-300">
-                  v2.0
+                  v1.0
                 </span>
               </div>
               <p className="text-[10px] text-muted-foreground hidden lg:block">
-                Enterprise Clinical Health System
+                Patient Assistance Center & Eye Hospital
               </p>
             </div>
           </div>
@@ -70,11 +73,10 @@ export default function Header() {
           <div className="relative">
             <button
               onClick={() => isSuperAdmin && setCenterDropdownOpen(!centerDropdownOpen)}
-              className={`flex items-center gap-1.5 sm:gap-2 rounded-lg border px-2 sm:px-3 py-1.5 text-xs font-medium transition-all ${
-                isSuperAdmin
-                  ? 'border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/30 hover:bg-blue-100/60 text-blue-700 dark:text-blue-300 cursor-pointer shadow-sm'
-                  : 'border-border bg-muted/40 text-foreground cursor-default'
-              }`}
+              className={`flex items-center gap-1.5 sm:gap-2 rounded-lg border px-2 sm:px-3 py-1.5 text-xs font-medium transition-all ${isSuperAdmin
+                ? 'border-blue-200 dark:border-blue-900/60 bg-blue-50/50 dark:bg-blue-950/30 hover:bg-blue-100/60 text-blue-700 dark:text-blue-300 cursor-pointer shadow-sm'
+                : 'border-border bg-muted/40 text-foreground cursor-default'
+                }`}
             >
               <Building2 className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
               <div className="text-left">
@@ -95,35 +97,40 @@ export default function Header() {
                   Switch Hospital Center Context
                 </div>
                 <div className="mt-1 space-y-1">
-                  {availableCenters.map((ctr) => {
-                    const isSelected = activeCenter?.id === ctr.id;
-                    return (
-                      <button
-                        key={ctr.id}
-                        onClick={() => {
-                          switchCenter(ctr);
-                          setCenterDropdownOpen(false);
-                        }}
-                        className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-xs font-medium transition-colors ${
-                          isSelected
+                  {availableCenters
+                    .filter((ctr) => ctr.status !== 'INACTIVE')
+                    .map((ctr) => {
+                      const isSelected = activeCenter?.id === ctr.id;
+                      return (
+                        <button
+                          key={ctr.id}
+                          onClick={() => {
+                            switchCenter(ctr);
+                            setCenterDropdownOpen(false);
+                          }}
+                          className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-xs font-medium transition-colors ${isSelected
                             ? 'bg-blue-600 text-white font-semibold'
                             : 'hover:bg-muted text-foreground'
-                        }`}
-                      >
-                        <div className="text-left">
-                          <p>{ctr.name}</p>
-                          <span
-                            className={`text-[10px] ${
-                              isSelected ? 'text-blue-100' : 'text-muted-foreground'
                             }`}
-                          >
-                            Code: {ctr.code}
-                          </span>
-                        </div>
-                        {isSelected && <Check className="h-4 w-4" />}
-                      </button>
-                    );
-                  })}
+                        >
+                          <div className="text-left">
+                            <p>{ctr.name}</p>
+                            <span
+                              className={`text-[10px] ${isSelected ? 'text-blue-100' : 'text-muted-foreground'
+                                }`}
+                            >
+                              Code: {ctr.code}
+                            </span>
+                          </div>
+                          {isSelected && <Check className="h-4 w-4" />}
+                        </button>
+                      );
+                    })}
+                  {availableCenters.filter((ctr) => ctr.status !== 'INACTIVE').length === 0 && (
+                    <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">
+                      No active centers available
+                    </div>
+                  )}
                 </div>
               </div>
             )}

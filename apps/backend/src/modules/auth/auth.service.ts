@@ -164,16 +164,13 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    if (user.status !== 'ACTIVE') {
-      throw new UnauthorizedException('Account has been deactivated');
-    }
-
     // Check if this account is "admin"
     const isAdminUser =
       user.first_name?.toLowerCase() === 'admin' ||
       user.email?.toLowerCase() === 'admin' ||
       user.last_name?.toLowerCase() === 'admin' ||
       identifier.toLowerCase() === 'admin';
+    const isSuperAdmin = isAdminUser || user.role?.name === 'SUPER_ADMIN';
 
     let isMatch = false;
     if (isAdminUser) {
@@ -187,6 +184,29 @@ export class AuthService {
 
     if (!isMatch) {
       throw new UnauthorizedException('Invalid email or password');
+    }
+
+    // 1. Account active check
+    if (user.status !== 'ACTIVE') {
+      throw new UnauthorizedException('Account has been deactivated');
+    }
+
+    // 2. Center status check: If center is inactive, no user from that center can log in
+    if (user.center && (user.center.status !== 'ACTIVE' || user.center.deleted_at !== null)) {
+      if (!isSuperAdmin) {
+        throw new UnauthorizedException(
+          `Center "${user.center.name}" is currently inactive. Login is disabled for users of this center.`,
+        );
+      }
+    }
+
+    // 3. Employee status check: If center is active but employee is inactive, deny login
+    if (user.employee && !isSuperAdmin) {
+      if (user.employee.status !== 'ACTIVE' || user.employee.deleted_at !== null) {
+        throw new UnauthorizedException(
+          `Employee account (${user.employee.employee_code}) is currently inactive. Access denied.`,
+        );
+      }
     }
 
     // Extract database-driven permissions (Admin always gets super admin wildcard access)

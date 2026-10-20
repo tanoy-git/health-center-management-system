@@ -4,7 +4,7 @@ const path = require('path');
 const backendDir = path.resolve(__dirname, '..');
 
 console.log('\n=======================================================');
-console.log(' [DB-Sync] Aegis HIS Auto Schema (DDL) & Data (DML) Sync');
+console.log(' [DB-Sync] CareWaves Auto Schema (DDL) & Data (DML) Sync');
 console.log('=======================================================');
 
 try {

@@ -17,6 +17,7 @@ import {
   X,
   KeyRound,
   Lock,
+  Edit2,
 } from 'lucide-react';
 
 export default function HrPage() {
@@ -52,6 +53,22 @@ export default function HrPage() {
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState(false);
   const [resetSubmitting, setResetSubmitting] = useState(false);
+
+  // Edit Employee Modal State
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<any>(null);
+  const [editForm, setEditForm] = useState({
+    firstName: '',
+    lastName: '',
+    phone: '',
+    roleId: '',
+    employeeCode: '',
+    designation: '',
+    department: 'Clinical Medicine',
+    baseSalary: 5000,
+    status: 'ACTIVE',
+  });
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -102,6 +119,65 @@ export default function HrPage() {
       loadData();
     } catch (err: any) {
       alert(err.message || 'Failed to update payroll status');
+    }
+  };
+
+  const handleToggleEmployeeStatus = async (emp: any) => {
+    const newStatus = emp.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    const actionText = newStatus === 'ACTIVE' ? 'activate' : 'deactivate';
+    if (
+      !confirm(
+        `Are you sure you want to ${actionText} employee ${emp.user?.first_name} ${emp.user?.last_name}? ${
+          newStatus === 'INACTIVE'
+            ? 'They will be immediately logged out and unable to log into the system.'
+            : ''
+        }`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await apiRequest(`/hr/employees/${emp.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      loadData();
+    } catch (err: any) {
+      alert(err.message || `Failed to ${actionText} employee`);
+    }
+  };
+
+  const handleOpenEdit = (emp: any) => {
+    setEditingEmployee(emp);
+    setEditForm({
+      firstName: emp.user?.first_name || '',
+      lastName: emp.user?.last_name || '',
+      phone: emp.user?.phone || '',
+      roleId: emp.user?.role?.id || (roles.length > 0 ? roles[0].id : ''),
+      employeeCode: emp.employee_code || '',
+      designation: emp.designation || '',
+      department: emp.department || 'Clinical Medicine',
+      baseSalary: Number(emp.base_salary) || 0,
+      status: emp.status || 'ACTIVE',
+    });
+    setEditModalOpen(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmployee) return;
+    setEditSubmitting(true);
+    try {
+      await apiRequest(`/hr/employees/${editingEmployee.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(editForm),
+      });
+      setEditModalOpen(false);
+      loadData();
+    } catch (err: any) {
+      alert(err.message || 'Failed to update employee details');
+    } finally {
+      setEditSubmitting(false);
     }
   };
 
@@ -366,29 +442,62 @@ export default function HrPage() {
                       ${Number(emp.base_salary).toFixed(2)}
                     </td>
                     <td className="py-3 px-4">
-                      <span className="rounded bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                      <span
+                        className={`rounded px-2 py-0.5 text-[10px] font-bold ${
+                          emp.status === 'ACTIVE'
+                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300'
+                        }`}
+                      >
                         {emp.status}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right">
-                      {emp.user?.id && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTargetEmployee(emp);
-                            setResetError(null);
-                            setResetSuccess(false);
-                            setAdminNewPassword('');
-                            setAdminConfirmPassword('');
-                            setResetModalOpen(true);
-                          }}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card hover:bg-muted px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors shadow-sm"
-                          title="Reset employee password"
-                        >
-                          <KeyRound className="h-3 w-3 text-blue-600 dark:text-blue-400" />
-                          <span>Reset Password</span>
-                        </button>
-                      )}
+                      <div className="flex items-center justify-end gap-1.5">
+                        {hasPermission('hr:employees:write') && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(emp)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-border bg-card hover:bg-muted px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors shadow-sm"
+                            title="Edit employee details"
+                          >
+                            <Edit2 className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                            <span>Edit</span>
+                          </button>
+                        )}
+                        {hasPermission('hr:employees:write') && emp.user?.role?.name !== 'SUPER_ADMIN' && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleEmployeeStatus(emp)}
+                            className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors shadow-sm ${
+                              emp.status === 'ACTIVE'
+                                ? 'border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100'
+                                : 'border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
+                            }`}
+                            title={emp.status === 'ACTIVE' ? 'Deactivate employee' : 'Activate employee'}
+                          >
+                            <span>{emp.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}</span>
+                          </button>
+                        )}
+                        {emp.user?.id && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTargetEmployee(emp);
+                              setResetError(null);
+                              setResetSuccess(false);
+                              setAdminNewPassword('');
+                              setAdminConfirmPassword('');
+                              setResetModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card hover:bg-muted px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors shadow-sm"
+                            title="Reset employee password"
+                          >
+                            <KeyRound className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                            <span>Reset Password</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -758,6 +867,195 @@ export default function HrPage() {
                   className="rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
                 >
                   {resetSubmitting ? 'Updating...' : 'Set New Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Employee Modal */}
+      {editModalOpen && editingEmployee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4 animate-in fade-in">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600">
+                  <Edit2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-foreground">
+                    Edit Employee Information
+                  </h2>
+                  <p className="text-[10px] text-muted-foreground font-mono">
+                    {editingEmployee.employee_code} • {editingEmployee.user?.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditModalOpen(false)}
+                className="rounded p-1 text-muted-foreground hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">First Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.firstName}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, firstName: e.target.value })
+                    }
+                    className="w-full rounded border border-input bg-background p-2 outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">Last Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.lastName}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, lastName: e.target.value })
+                    }
+                    className="w-full rounded border border-input bg-background p-2 outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">
+                    Employee Code *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.employeeCode}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, employeeCode: e.target.value })
+                    }
+                    className="w-full rounded border border-input bg-background p-2 font-mono outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">Phone Number</label>
+                  <input
+                    type="text"
+                    value={editForm.phone}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, phone: e.target.value })
+                    }
+                    placeholder="+1 555-0100"
+                    className="w-full rounded border border-input bg-background p-2 outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">
+                    System Role *
+                  </label>
+                  <select
+                    value={editForm.roleId}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, roleId: e.target.value })
+                    }
+                    className="w-full rounded border border-input bg-background p-2 font-medium outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    {roles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">
+                    Department *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.department}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, department: e.target.value })
+                    }
+                    className="w-full rounded border border-input bg-background p-2 outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">
+                    Designation *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.designation}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, designation: e.target.value })
+                    }
+                    className="w-full rounded border border-input bg-background p-2 outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">
+                    Base Salary ($/month) *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={editForm.baseSalary}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        baseSalary: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                    className="w-full rounded border border-input bg-background p-2 font-mono outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-foreground">Account Status *</label>
+                <select
+                  value={editForm.status}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, status: e.target.value })
+                  }
+                  className="w-full rounded border border-input bg-background p-2 font-medium outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="ACTIVE">ACTIVE (Allowed to login)</option>
+                  <option value="INACTIVE">INACTIVE (Blocked from login)</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setEditModalOpen(false)}
+                  disabled={editSubmitting}
+                  className="rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
+                >
+                  {editSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             </form>

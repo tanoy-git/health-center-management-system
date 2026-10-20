@@ -44,5 +44,5 @@ COPY --from=builder /app/package*.json ./
 
 EXPOSE 4000
 
-# Run database migrations and start production server
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main.js"]
+# Run database schema synchronization and start production server
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/src/main.js"]

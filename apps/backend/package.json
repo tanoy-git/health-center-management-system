@@ -3,16 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "prebuild": "prisma generate",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\"",
     "start": "nest start",
+    "prestart:dev": "node scripts/db-sync.js",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/src/main",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:push": "prisma db push",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "db:sync": "node scripts/db-sync.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.3.3",

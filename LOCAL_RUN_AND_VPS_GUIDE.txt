@@ -19,17 +19,22 @@ PART 1: RUNNING LOCALLY (DEVELOPMENT MODE WITH LIVE CHANGES)
    > docker ps
    (You should see 'aegis-postgres' running healthy on port 5434)
 
-3. INITIALIZE / SEED DATABASE (Run once or after schema changes)
-   > npm run prisma:generate
-   > npm run prisma:push
-   > npm run prisma:seed
+3. DATABASE SYNCHRONIZATION (DDL & DML)
+   - AUTOMATIC: When you pull updates from Git on any machine and run:
+     > npm run dev:backend
+     It automatically detects and applies all schema changes (`prisma db push`),
+     generates Prisma client bindings, and synchronizes system roles,
+     permissions, and catalog seed data (DML).
+   - MANUAL (Optional): You can manually trigger full sync anytime with:
+     > npm run db:sync
 
 4. START BACKEND (NestJS with live code reloading)
    Open Terminal 1 (or run this in current terminal to load Node/npm):
    > $env:PATH = "C:\Users\tanoy\AppData\Roaming\fnm\node-versions\v20.20.2\installation;" + $env:PATH
    > npm run dev:backend
    - Backend URL: http://localhost:3000/api/v1
-   - Watches apps/backend/src for code changes automatically.
+   - Automatically executes DB schema & DML sync before launching.
+   - Watches apps/backend/src for live code changes.
 
 5. START FRONTEND (Next.js with Fast Refresh)
    Open Terminal 2:

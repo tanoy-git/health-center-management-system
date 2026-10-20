@@ -217,7 +217,10 @@ async function main() {
   // Super Admin
   const adminUser = await prisma.user.upsert({
     where: { email: 'admin@aegis.health' },
-    update: {},
+    update: {
+      password_hash: passwordHash,
+      status: 'ACTIVE',
+    },
     create: {
       email: 'admin@aegis.health',
       password_hash: passwordHash,
@@ -247,7 +250,10 @@ async function main() {
   // Doctor at Center A (Metro Central)
   const doctorMetroUser = await prisma.user.upsert({
     where: { email: 'dr.marcus@aegis.health' },
-    update: {},
+    update: {
+      password_hash: staffPasswordHash,
+      status: 'ACTIVE',
+    },
     create: {
       email: 'dr.marcus@aegis.health',
       password_hash: staffPasswordHash,
@@ -277,7 +283,10 @@ async function main() {
   // Cashier at Center A
   const cashierMetroUser = await prisma.user.upsert({
     where: { email: 'cashier.metro@aegis.health' },
-    update: {},
+    update: {
+      password_hash: staffPasswordHash,
+      status: 'ACTIVE',
+    },
     create: {
       email: 'cashier.metro@aegis.health',
       password_hash: staffPasswordHash,
@@ -307,7 +316,10 @@ async function main() {
   // Doctor at Center B (Westside)
   const doctorWestUser = await prisma.user.upsert({
     where: { email: 'dr.sarah@aegis.health' },
-    update: {},
+    update: {
+      password_hash: staffPasswordHash,
+      status: 'ACTIVE',
+    },
     create: {
       email: 'dr.sarah@aegis.health',
       password_hash: staffPasswordHash,

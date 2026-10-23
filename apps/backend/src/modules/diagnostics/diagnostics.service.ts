@@ -20,6 +20,14 @@ export interface SignOffReportDto {
   impression?: string;
 }
 
+export interface UpdateDiagnosticReportDto {
+  testType?: string;
+  testName?: string;
+  findings?: string;
+  impression?: string;
+  attachments?: string[];
+}
+
 @Injectable()
 export class DiagnosticsService {
   constructor(private prisma: PrismaService) { }
@@ -302,6 +310,40 @@ export class DiagnosticsService {
         impression: dto.impression || report.impression,
         updated_by: pathologistId,
       },
+      include: {
+        patient: true,
+      },
+    });
+  }
+
+  async updateReport(
+    id: string,
+    centerId: string,
+    userId: string,
+    dto: UpdateDiagnosticReportDto,
+  ) {
+    const report = await this.prisma.diagnosticReport.findFirst({
+      where: { id, center_id: centerId },
+    });
+    if (!report) {
+      throw new NotFoundException(`Diagnostic report ${id} not found at this center`);
+    }
+
+    const updateData: any = {
+      updated_by: userId,
+    };
+
+    if (dto.testType !== undefined) updateData.test_type = dto.testType;
+    if (dto.testName !== undefined) updateData.test_name = dto.testName;
+    if (dto.findings !== undefined) updateData.findings = dto.findings;
+    if (dto.impression !== undefined) updateData.impression = dto.impression || null;
+    if (dto.attachments !== undefined) {
+      updateData.attachments = dto.attachments ? JSON.stringify(dto.attachments) : null;
+    }
+
+    return this.prisma.diagnosticReport.update({
+      where: { id },
+      data: updateData,
       include: {
         patient: true,
       },

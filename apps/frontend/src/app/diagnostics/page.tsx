@@ -20,6 +20,7 @@ import {
   Check,
   User,
   Users,
+  Pencil,
 } from 'lucide-react';
 
 import DateRangeFilter, {
@@ -52,8 +53,9 @@ export default function DiagnosticsPage() {
   >(null);
   const [activeQueueItem, setActiveQueueItem] = useState<any | null>(null);
 
-  // New Report Modal
+  // New / Edit Report Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingReport, setEditingReport] = useState<any | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [testType, setTestType] = useState('USG');
   const [testName, setTestName] = useState('Abdominal & Pelvic Ultrasound (USG)');
@@ -201,33 +203,82 @@ export default function DiagnosticsPage() {
     }
   };
 
+  const handleOpenEditReport = (r: any) => {
+    setEditingReport(r);
+    setSelectedInvoiceItemId(null);
+    setActiveQueueItem({
+      invoice: {
+        patient: r.patient,
+        invoice_number: r.report_number,
+      },
+      item_name: r.test_name,
+    });
+    setSelectedPatientId(r.patient_id || r.patient?.id || '');
+    setTestType(r.test_type || 'USG');
+    setTestName(r.test_name || '');
+    setFindings(r.findings || '');
+    setImpression(r.impression || '');
+    let urls: string[] = [];
+    if (r.attachments) {
+      try {
+        urls = typeof r.attachments === 'string' ? JSON.parse(r.attachments) : r.attachments;
+      } catch (e) { }
+    }
+    setUploadedUrls(Array.isArray(urls) ? urls : []);
+    setIsModalOpen(true);
+  };
+
   const handleCreateReport = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await apiRequest('/diagnostics/reports', {
-        method: 'POST',
-        body: JSON.stringify({
-          patientId: selectedPatientId,
-          testType,
-          testName,
-          findings,
-          impression,
-          attachments: uploadedUrls,
-          invoiceItemId: selectedInvoiceItemId || undefined,
-        }),
-      });
+      if (editingReport) {
+        await apiRequest(`/diagnostics/reports/${editingReport.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            testType,
+            testName,
+            findings,
+            impression,
+            attachments: uploadedUrls,
+          }),
+        });
 
-      setIsModalOpen(false);
-      setSelectedInvoiceItemId(null);
-      setActiveQueueItem(null);
-      setFindings('');
-      setImpression('');
-      setUploadedUrls([]);
-      loadReports();
-      loadQueue();
+        setIsModalOpen(false);
+        setEditingReport(null);
+        setSelectedInvoiceItemId(null);
+        setActiveQueueItem(null);
+        setFindings('');
+        setImpression('');
+        setUploadedUrls([]);
+        loadReports();
+        loadQueue();
+        alert('Diagnostic report updated successfully');
+      } else {
+        await apiRequest('/diagnostics/reports', {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: selectedPatientId,
+            testType,
+            testName,
+            findings,
+            impression,
+            attachments: uploadedUrls,
+            invoiceItemId: selectedInvoiceItemId || undefined,
+          }),
+        });
+
+        setIsModalOpen(false);
+        setSelectedInvoiceItemId(null);
+        setActiveQueueItem(null);
+        setFindings('');
+        setImpression('');
+        setUploadedUrls([]);
+        loadReports();
+        loadQueue();
+      }
     } catch (err: any) {
-      alert(err.message || 'Failed to create report');
+      alert(err.message || 'Failed to process report');
     } finally {
       setSubmitting(false);
     }
@@ -643,27 +694,40 @@ export default function DiagnosticsPage() {
                         {new Date(r.created_at).toLocaleDateString()}
                       </span>
 
-                      {isSigned ? (
-                        <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-semibold">
-                          <ShieldCheck className="h-4 w-4" />
-                          <span>Pathologist Verified</span>
-                        </div>
-                      ) : hasPermission('diagnostics:reports:signoff') ? (
-                        <button
-                          onClick={() => {
-                            setTargetReport(r);
-                            setSignOffModalOpen(true);
-                          }}
-                          className="flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
-                        >
-                          <ShieldCheck className="h-3.5 w-3.5" />
-                          <span>Digital Sign-Off</span>
-                        </button>
-                      ) : (
-                        <span className="text-[11px] text-amber-600 font-medium">
-                          Pending Pathologist Review
-                        </span>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {hasPermission('diagnostics:reports:write') && (
+                          <button
+                            onClick={() => handleOpenEditReport(r)}
+                            className="flex items-center gap-1 rounded-lg border border-border bg-card hover:bg-muted px-2.5 py-1.5 text-xs font-semibold text-foreground transition-colors shadow-sm"
+                            title="Edit Diagnostic Report"
+                          >
+                            <Pencil className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                            <span>Edit</span>
+                          </button>
+                        )}
+
+                        {isSigned ? (
+                          <div className="flex items-center gap-1 text-[11px] text-emerald-600 font-semibold">
+                            <ShieldCheck className="h-4 w-4" />
+                            <span>Pathologist Verified</span>
+                          </div>
+                        ) : hasPermission('diagnostics:reports:signoff') ? (
+                          <button
+                            onClick={() => {
+                              setTargetReport(r);
+                              setSignOffModalOpen(true);
+                            }}
+                            className="flex items-center gap-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white transition-colors"
+                          >
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            <span>Digital Sign-Off</span>
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-amber-600 font-medium">
+                            Pending Pathologist Review
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -679,10 +743,15 @@ export default function DiagnosticsPage() {
           <div className="w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto animate-in fade-in">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <h2 className="text-sm font-bold text-foreground">
-                Create Diagnostic / Lab / USG Report
+                {editingReport
+                  ? `Edit Diagnostic Report (${editingReport.report_number})`
+                  : 'Create Diagnostic / Lab / USG Report'}
               </h2>
               <button
-                onClick={() => setIsModalOpen(false)}
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setEditingReport(null);
+                }}
                 className="rounded p-1 text-muted-foreground hover:bg-muted"
               >
                 <X className="h-4 w-4" />
@@ -830,7 +899,10 @@ export default function DiagnosticsPage() {
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    setEditingReport(null);
+                  }}
                   className="rounded-lg border border-border px-4 py-2 font-medium hover:bg-muted"
                 >
                   Cancel
@@ -840,7 +912,13 @@ export default function DiagnosticsPage() {
                   disabled={submitting}
                   className="rounded-lg bg-blue-600 hover:bg-blue-700 px-5 py-2 font-semibold text-white shadow-sm disabled:opacity-50"
                 >
-                  {submitting ? 'Saving...' : 'Save Diagnostic Report'}
+                  {submitting
+                    ? editingReport
+                      ? 'Saving Changes...'
+                      : 'Saving...'
+                    : editingReport
+                      ? 'Save Changes'
+                      : 'Save Diagnostic Report'}
                 </button>
               </div>
             </form>

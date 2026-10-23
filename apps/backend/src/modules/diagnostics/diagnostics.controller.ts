@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Body,
   Param,
@@ -99,5 +100,16 @@ export class DiagnosticsController {
       pathologistId,
       body,
     );
+  }
+
+  @Put('reports/:id')
+  @RequirePermissions('diagnostics:reports:write')
+  async updateReport(
+    @Param('id') id: string,
+    @CurrentTenant() centerId: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: any,
+  ) {
+    return this.diagnosticsService.updateReport(id, centerId, userId, body);
   }
 }

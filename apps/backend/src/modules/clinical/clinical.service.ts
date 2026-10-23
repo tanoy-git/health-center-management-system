@@ -55,6 +55,21 @@ export interface CreatePrescriptionDto {
   eyeData?: any;
 }
 
+export interface UpdatePrescriptionDto {
+  clinicalNotes?: string;
+  diagnosis?: string;
+  vitals?: {
+    bp?: string;
+    pulse?: string;
+    temp?: string;
+    weight?: string;
+    spo2?: string;
+  };
+  followUpDate?: string;
+  items?: PrescriptionMedicineItemDto[];
+  eyeData?: any;
+}
+
 @Injectable()
 export class ClinicalService {
   constructor(private prisma: PrismaService) { }
@@ -257,6 +272,71 @@ export class ClinicalService {
     }
 
     return prescription;
+  }
+
+  async updatePrescription(
+    id: string,
+    centerId: string,
+    userId: string,
+    dto: UpdatePrescriptionDto,
+  ) {
+    const existing = await this.prisma.prescription.findFirst({
+      where: { id, center_id: centerId },
+      include: { items: true },
+    });
+    if (!existing) {
+      throw new NotFoundException('Prescription not found at this center');
+    }
+
+    const updateData: any = {
+      updated_by: userId,
+    };
+
+    if (dto.clinicalNotes !== undefined) updateData.clinical_notes = dto.clinicalNotes;
+    if (dto.diagnosis !== undefined) updateData.diagnosis = dto.diagnosis;
+    if (dto.vitals !== undefined) {
+      updateData.vitals = dto.vitals ? JSON.stringify(dto.vitals) : null;
+    }
+    if (dto.followUpDate !== undefined) {
+      updateData.follow_up_date = dto.followUpDate ? new Date(dto.followUpDate) : null;
+    }
+    if (dto.eyeData !== undefined) {
+      updateData.eye_data = dto.eyeData
+        ? typeof dto.eyeData === 'string'
+          ? dto.eyeData
+          : JSON.stringify(dto.eyeData)
+        : null;
+    }
+
+    // If items are provided, replace them
+    if (dto.items && Array.isArray(dto.items)) {
+      await this.prisma.prescriptionItem.deleteMany({
+        where: { prescription_id: id },
+      });
+
+      const itemsData = dto.items.map((item) => ({
+        center_id: centerId,
+        medicine_id: item.medicineId || null,
+        medicine_name: item.medicineName,
+        dosage: item.dosage,
+        duration: item.duration,
+        instructions: item.instructions || null,
+        created_by: userId,
+      }));
+
+      updateData.items = {
+        create: itemsData,
+      };
+    }
+
+    return this.prisma.prescription.update({
+      where: { id },
+      data: updateData,
+      include: {
+        items: true,
+        patient: true,
+      },
+    });
   }
 
   // ---------------------------------------------

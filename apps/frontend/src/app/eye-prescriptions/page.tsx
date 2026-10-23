@@ -22,6 +22,7 @@ import {
   Glasses,
   Trash2,
   Pill,
+  Pencil,
 } from 'lucide-react';
 import DateRangeFilter, {
   DateFilterValue,
@@ -103,6 +104,7 @@ export default function EyePrescriptionsPage() {
 
   // Eye Examination Modal
   const [examModalOpen, setExamModalOpen] = useState(false);
+  const [editingEyeRx, setEditingEyeRx] = useState<EyePrescription | null>(null);
   const [selectedQueueItem, setSelectedQueueItem] = useState<QueuedItem | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -202,6 +204,89 @@ export default function EyePrescriptionsPage() {
       clinical_notes: 'Advised continuous wear for distance and near reading. 20-20-20 screen rule.',
       follow_up_date: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 6 months
     });
+    setEditingEyeRx(null);
+    setExamModalOpen(true);
+  };
+
+  const handleOpenEditEyeRx = (rx: EyePrescription) => {
+    setEditingEyeRx(rx);
+    setErrorMsg(null);
+    setSelectedQueueItem({
+      id: '',
+      item_name: `Eye Exam (${rx.prescription_number})`,
+      category: 'EYE',
+      created_at: rx.created_at,
+      invoice: {
+        id: '',
+        invoice_number: rx.prescription_number,
+        patient: rx.patient,
+      },
+    });
+
+    let eyeData: any = {};
+    if (rx.eye_data) {
+      try {
+        eyeData = typeof rx.eye_data === 'string' ? JSON.parse(rx.eye_data) : rx.eye_data;
+      } catch (e) { }
+    }
+
+    setEyeExamForm({
+      od_dist_ucva: eyeData.od?.distUcva || eyeData.od_dist_ucva || '6/6',
+      od_dist_bcva: eyeData.od?.distBcva || eyeData.od_dist_bcva || '6/6',
+      od_near_ucva: eyeData.od?.nearUcva || eyeData.od_near_ucva || 'N6',
+      od_near_bcva: eyeData.od?.nearBcva || eyeData.od_near_bcva || 'N6',
+      od_sph: eyeData.od?.sph || eyeData.od_sph || '0.00',
+      od_cyl: eyeData.od?.cyl || eyeData.od_cyl || '0.00',
+      od_axis: eyeData.od?.axis || eyeData.od_axis || '0',
+      od_add: eyeData.od?.add || eyeData.od_add || '+0.00',
+      od_iop: eyeData.od?.iop || eyeData.od_iop || '14 mmHg',
+
+      os_dist_ucva: eyeData.os?.distUcva || eyeData.os_dist_ucva || '6/6',
+      os_dist_bcva: eyeData.os?.distBcva || eyeData.os_dist_bcva || '6/6',
+      os_near_ucva: eyeData.os?.nearUcva || eyeData.os_near_ucva || 'N6',
+      os_near_bcva: eyeData.os?.nearBcva || eyeData.os_near_bcva || 'N6',
+      os_sph: eyeData.os?.sph || eyeData.os_sph || '0.00',
+      os_cyl: eyeData.os?.cyl || eyeData.os_cyl || '0.00',
+      os_axis: eyeData.os?.axis || eyeData.os_axis || '0',
+      os_add: eyeData.os?.add || eyeData.os_add || '+0.00',
+      os_iop: eyeData.os?.iop || eyeData.os_iop || '14 mmHg',
+
+      slit_lamp:
+        eyeData.slitLamp ||
+        eyeData.slit_lamp ||
+        'Cornea clear, Anterior chamber quiet, Lens clear',
+      fundus:
+        eyeData.fundus ||
+        'Optic disc healthy, Cup/disc ratio 0.3, Macula normal',
+      diagnosis:
+        rx.diagnosis ||
+        eyeData.diagnosis ||
+        'Compound Myopic Astigmatism with Presbyopia',
+      lens_type:
+        eyeData.lensRecommendation ||
+        eyeData.lens_type ||
+        'Progressive Blue-Cut Antireflective (ARC)',
+      clinical_notes: rx.clinical_notes || eyeData.clinical_notes || '',
+      follow_up_date: rx.follow_up_date
+        ? new Date(rx.follow_up_date).toISOString().split('T')[0]
+        : '',
+    });
+
+    if (rx.items && rx.items.length > 0) {
+      setDrops(
+        rx.items.map((it: any) => ({
+          medicineId: it.medicine_id || 'custom',
+          medicineName: it.medicine_name,
+          dosage: it.dosage,
+          duration: it.duration,
+          instructions: it.instructions || '',
+          isCustom: !it.medicine_id,
+        }))
+      );
+    } else {
+      setDrops([]);
+    }
+
     setExamModalOpen(true);
   };
 
@@ -359,17 +444,29 @@ export default function EyePrescriptionsPage() {
           }),
       };
 
-      const res = await apiRequest('/clinical/prescriptions', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
+      if (editingEyeRx) {
+        await apiRequest(`/clinical/prescriptions/${editingEyeRx.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
 
-      setExamModalOpen(false);
-      // Automatically trigger authenticated PDF preview/download
-      if (res && res.id) {
-        handleDownloadPdf(res.id, res.prescription_number);
+        setExamModalOpen(false);
+        setEditingEyeRx(null);
+        loadData();
+        alert('Eye prescription updated successfully');
+      } else {
+        const res = await apiRequest('/clinical/prescriptions', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+
+        setExamModalOpen(false);
+        // Automatically trigger authenticated PDF preview/download
+        if (res && res.id) {
+          handleDownloadPdf(res.id, res.prescription_number);
+        }
+        loadData();
       }
-      loadData();
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to issue eye prescription');
     } finally {
@@ -609,19 +706,31 @@ export default function EyePrescriptionsPage() {
                           })}
                         </td>
                         <td className="py-3 px-4 text-right">
-                          <button
-                            disabled={downloadingId === rx.id}
-                            onClick={() => handleDownloadPdf(rx.id, rx.prescription_number)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card hover:bg-muted px-2.5 py-1 text-xs font-semibold text-foreground transition-colors shadow-sm disabled:opacity-50"
-                            title="Print Eye Prescription PDF"
-                          >
-                            {downloadingId === rx.id ? (
-                              <RefreshCw className="h-3.5 w-3.5 animate-spin text-blue-600" />
-                            ) : (
-                              <Printer className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                          <div className="flex items-center justify-end gap-1.5">
+                            {hasPermission('clinical:prescription:write') && (
+                              <button
+                                onClick={() => handleOpenEditEyeRx(rx)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900/50 hover:bg-blue-100 dark:hover:bg-blue-900/80 px-2.5 py-1 text-xs font-semibold transition-colors shadow-sm"
+                                title="Edit Eye Prescription"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                <span>Edit</span>
+                              </button>
                             )}
-                            <span>{downloadingId === rx.id ? 'Loading...' : 'Print PDF'}</span>
-                          </button>
+                            <button
+                              disabled={downloadingId === rx.id}
+                              onClick={() => handleDownloadPdf(rx.id, rx.prescription_number)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card hover:bg-muted px-2.5 py-1 text-xs font-semibold text-foreground transition-colors shadow-sm disabled:opacity-50"
+                              title="Print Eye Prescription PDF"
+                            >
+                              {downloadingId === rx.id ? (
+                                <RefreshCw className="h-3.5 w-3.5 animate-spin text-blue-600" />
+                              ) : (
+                                <Printer className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                              )}
+                              <span>{downloadingId === rx.id ? 'Loading...' : 'Print PDF'}</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -645,7 +754,9 @@ export default function EyePrescriptionsPage() {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-foreground">
-                    Comprehensive Eye Examination & Refraction
+                    {editingEyeRx
+                      ? `Edit Eye Examination Prescription (${editingEyeRx.prescription_number})`
+                      : 'Comprehensive Eye Examination & Refraction'}
                   </h3>
                   <p className="text-xs text-muted-foreground">
                     Patient:{' '}
@@ -659,7 +770,10 @@ export default function EyePrescriptionsPage() {
 
               <button
                 type="button"
-                onClick={() => setExamModalOpen(false)}
+                onClick={() => {
+                  setExamModalOpen(false);
+                  setEditingEyeRx(null);
+                }}
                 className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
               >
                 <X className="h-5 w-5" />
@@ -1092,7 +1206,10 @@ export default function EyePrescriptionsPage() {
               <div className="flex justify-end gap-2 pt-4 border-t border-border">
                 <button
                   type="button"
-                  onClick={() => setExamModalOpen(false)}
+                  onClick={() => {
+                    setExamModalOpen(false);
+                    setEditingEyeRx(null);
+                  }}
                   className="rounded-lg border border-border px-4 py-2 text-xs font-semibold text-foreground hover:bg-muted"
                 >
                   Cancel
@@ -1103,7 +1220,15 @@ export default function EyePrescriptionsPage() {
                   className="inline-flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 px-5 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
                 >
                   <Printer className="h-4 w-4" />
-                  <span>{submitting ? 'Generating Prescription...' : 'Complete Exam & Print PDF'}</span>
+                  <span>
+                    {submitting
+                      ? editingEyeRx
+                        ? 'Saving Changes...'
+                        : 'Generating Prescription...'
+                      : editingEyeRx
+                        ? 'Save Changes'
+                        : 'Complete Exam & Print PDF'}
+                  </span>
                 </button>
               </div>
             </form>

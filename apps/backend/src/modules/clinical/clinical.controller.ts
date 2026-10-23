@@ -98,6 +98,17 @@ export class ClinicalController {
     return this.clinicalService.createPrescription(centerId, doctorId, body);
   }
 
+  @Put('prescriptions/:id')
+  @RequirePermissions('clinical:prescription:write')
+  async updatePrescription(
+    @Param('id') id: string,
+    @CurrentTenant() centerId: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: any,
+  ) {
+    return this.clinicalService.updatePrescription(id, centerId, userId, body);
+  }
+
   @Get('prescriptions')
   @RequirePermissions('clinical:prescription:read')
   async getPrescriptions(

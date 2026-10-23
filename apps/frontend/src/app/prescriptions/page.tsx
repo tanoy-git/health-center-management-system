@@ -21,6 +21,7 @@ import {
   Check,
   RotateCcw,
   Sparkles,
+  Pencil,
 } from 'lucide-react';
 
 import DateRangeFilter, {
@@ -57,8 +58,9 @@ export default function PrescriptionsPage() {
   const [selectedInvoiceItemId, setSelectedInvoiceItemId] = useState<string | null>(null);
   const [activeQueueItem, setActiveQueueItem] = useState<any | null>(null);
 
-  // New Prescription Modal State
+  // New / Edit Prescription Modal State
   const [isNewRxModalOpen, setIsNewRxModalOpen] = useState(false);
+  const [editingRx, setEditingRx] = useState<any | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [diagnosis, setDiagnosis] = useState('');
   const [clinicalNotes, setClinicalNotes] = useState('');
@@ -187,6 +189,7 @@ export default function PrescriptionsPage() {
   };
 
   const handleAttendQueue = (item: any) => {
+    setEditingRx(null);
     setActiveQueueItem(item);
     setSelectedInvoiceItemId(item.id);
     if (item.invoice?.patient?.id) {
@@ -209,6 +212,62 @@ export default function PrescriptionsPage() {
     }
   };
 
+  const handleOpenEditRx = (rx: any) => {
+    setEditingRx(rx);
+    setSelectedInvoiceItemId(null);
+    setActiveQueueItem({
+      invoice: {
+        patient: rx.patient,
+        invoice_number: rx.prescription_number,
+      },
+      item_name: `Prescription ${rx.prescription_number}`,
+      category: rx.prescription_type || 'GENERAL',
+    });
+    setSelectedPatientId(rx.patient_id || rx.patient?.id || '');
+    setDiagnosis(rx.diagnosis || '');
+    setClinicalNotes(rx.clinical_notes || '');
+    let parsedVitals = {
+      bp: '120/80',
+      pulse: '72',
+      temp: '98.6F',
+      weight: '70kg',
+      spo2: '99',
+    };
+    if (rx.vitals) {
+      try {
+        parsedVitals = typeof rx.vitals === 'string' ? JSON.parse(rx.vitals) : rx.vitals;
+      } catch (e) { }
+    }
+    setVitals(parsedVitals);
+    setFollowUpDate(
+      rx.follow_up_date
+        ? new Date(rx.follow_up_date).toISOString().slice(0, 10)
+        : ''
+    );
+    if (rx.items && rx.items.length > 0) {
+      setRxItems(
+        rx.items.map((it: any) => ({
+          medicineId: it.medicine_id || '',
+          medicineName: it.medicine_name,
+          dosage: it.dosage,
+          duration: it.duration,
+          instructions: it.instructions || '',
+        }))
+      );
+    } else {
+      setRxItems([
+        {
+          medicineId: '',
+          medicineName: '',
+          dosage: '1-0-1',
+          duration: '5 days',
+          instructions: 'After meals with plenty of water',
+        },
+      ]);
+    }
+    setIsNewRxModalOpen(true);
+  };
+
   const handleCreatePrescription = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPatientId) {
@@ -217,29 +276,50 @@ export default function PrescriptionsPage() {
     }
     setSubmitting(true);
     try {
-      const newRx = await apiRequest('/clinical/prescriptions', {
-        method: 'POST',
-        body: JSON.stringify({
-          patientId: selectedPatientId,
-          invoiceItemId: selectedInvoiceItemId || undefined,
-          diagnosis,
-          clinicalNotes,
-          vitals,
-          followUpDate: followUpDate || null,
-          items: rxItems,
-        }),
-      });
+      if (editingRx) {
+        await apiRequest(`/clinical/prescriptions/${editingRx.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            diagnosis,
+            clinicalNotes,
+            vitals,
+            followUpDate: followUpDate || null,
+            items: rxItems,
+          }),
+        });
 
-      setIsNewRxModalOpen(false);
-      setSelectedInvoiceItemId(null);
-      setActiveQueueItem(null);
-      loadData();
-      loadQueue();
+        setIsNewRxModalOpen(false);
+        setEditingRx(null);
+        setSelectedInvoiceItemId(null);
+        setActiveQueueItem(null);
+        loadData();
+        loadQueue();
+        alert('Prescription updated successfully');
+      } else {
+        const newRx = await apiRequest('/clinical/prescriptions', {
+          method: 'POST',
+          body: JSON.stringify({
+            patientId: selectedPatientId,
+            invoiceItemId: selectedInvoiceItemId || undefined,
+            diagnosis,
+            clinicalNotes,
+            vitals,
+            followUpDate: followUpDate || null,
+            items: rxItems,
+          }),
+        });
 
-      // Automatically trigger PDF download
-      handleDownloadPdf(newRx.id, newRx.prescription_number);
+        setIsNewRxModalOpen(false);
+        setSelectedInvoiceItemId(null);
+        setActiveQueueItem(null);
+        loadData();
+        loadQueue();
+
+        // Automatically trigger PDF download
+        handleDownloadPdf(newRx.id, newRx.prescription_number);
+      }
     } catch (err: any) {
-      alert(err.message || 'Failed to create prescription');
+      alert(err.message || 'Failed to process prescription');
     } finally {
       setSubmitting(false);
     }
@@ -572,15 +652,27 @@ export default function PrescriptionsPage() {
                             </span>
                           </td>
                           <td className="py-3 px-4 text-right whitespace-nowrap">
-                            <button
-                              onClick={() =>
-                                handleDownloadPdf(rx.id, rx.prescription_number)
-                              }
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-border hover:bg-muted px-3 py-1.5 text-xs font-semibold text-blue-600 dark:text-blue-400 shadow-sm transition-colors"
-                            >
-                              <FileDown className="h-3.5 w-3.5" />
-                              <span>Download PDF</span>
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              {hasPermission('clinical:prescription:write') && (
+                                <button
+                                  onClick={() => handleOpenEditRx(rx)}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900/50 hover:bg-blue-100 dark:hover:bg-blue-900/80 px-2.5 py-1.5 text-xs font-semibold transition-colors shadow-sm"
+                                  title="Edit Prescription"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  <span>Edit</span>
+                                </button>
+                              )}
+                              <button
+                                onClick={() =>
+                                  handleDownloadPdf(rx.id, rx.prescription_number)
+                                }
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-border hover:bg-muted px-2.5 py-1.5 text-xs font-semibold text-foreground dark:text-muted-foreground hover:text-foreground shadow-sm transition-colors"
+                              >
+                                <FileDown className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                                <span>PDF</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -600,14 +692,19 @@ export default function PrescriptionsPage() {
             <div className="flex items-center justify-between border-b border-border pb-3">
               <div>
                 <h2 className="text-sm font-bold text-foreground">
-                  Generate Clinical Prescription
+                  {editingRx
+                    ? `Edit Prescription (${editingRx.prescription_number})`
+                    : 'Generate Clinical Prescription'}
                 </h2>
                 <p className="text-[11px] text-muted-foreground">
                   Center: {activeCenter?.name} | Doctor Consultation & Rx Engine
                 </p>
               </div>
               <button
-                onClick={() => setIsNewRxModalOpen(false)}
+                onClick={() => {
+                  setIsNewRxModalOpen(false);
+                  setEditingRx(null);
+                }}
                 className="rounded-lg p-1 text-muted-foreground hover:bg-muted"
               >
                 <X className="h-4 w-4" />
@@ -872,8 +969,11 @@ export default function PrescriptionsPage() {
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-border">
                 <button
                   type="button"
-                  onClick={() => setIsNewRxModalOpen(false)}
-                  className="rounded-lg border border-border px-4 py-2 font-medium hover:bg-muted"
+                  onClick={() => {
+                    setIsNewRxModalOpen(false);
+                    setEditingRx(null);
+                  }}
+                  className="rounded-lg border border-border px-4 py-2 font-medium hover:bg-muted transition-colors"
                 >
                   Cancel
                 </button>
@@ -882,7 +982,13 @@ export default function PrescriptionsPage() {
                   disabled={submitting}
                   className="rounded-lg bg-blue-600 hover:bg-blue-700 px-5 py-2 font-semibold text-white shadow-sm shadow-blue-500/20 disabled:opacity-50"
                 >
-                  {submitting ? 'Generating PDF...' : 'Issue Prescription & PDF'}
+                  {submitting
+                    ? editingRx
+                      ? 'Saving Changes...'
+                      : 'Generating PDF...'
+                    : editingRx
+                      ? 'Save Changes'
+                      : 'Issue Prescription & PDF'}
                 </button>
               </div>
             </form>

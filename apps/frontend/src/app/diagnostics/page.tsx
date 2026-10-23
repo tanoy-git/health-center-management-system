@@ -269,7 +269,7 @@ export default function DiagnosticsPage() {
           </p>
         </div>
 
-        {hasPermission('diagnostics:reports:write') && (
+        {/* {hasPermission('diagnostics:reports:write') && (
           <button
             onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-blue-500/25 transition-colors"
@@ -277,7 +277,7 @@ export default function DiagnosticsPage() {
             <Plus className="h-4 w-4" />
             <span>New Lab / USG Report</span>
           </button>
-        )}
+        )} */}
       </div>
 
       {/* Patient Diagnostics Queue Section */}
@@ -331,15 +331,15 @@ export default function DiagnosticsPage() {
                 key={tab}
                 onClick={() => setSelectedQueueTab(tab)}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition-all ${isSelected
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'border border-border bg-background hover:bg-muted text-muted-foreground hover:text-foreground'
+                  ? 'bg-purple-600 text-white shadow-sm'
+                  : 'border border-border bg-background hover:bg-muted text-muted-foreground hover:text-foreground'
                   }`}
               >
                 <span>{tab === 'ALL' ? 'All Waiting' : tab}</span>
                 <span
                   className={`rounded-full px-1.5 py-0.2 text-[9px] font-bold ${isSelected
-                      ? 'bg-white/20 text-white'
-                      : 'bg-muted text-muted-foreground'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-muted text-muted-foreground'
                     }`}
                 >
                   {count}
@@ -527,8 +527,8 @@ export default function DiagnosticsPage() {
               key={type}
               onClick={() => setTestTypeFilter(type)}
               className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${testTypeFilter === type
-                  ? 'bg-blue-600 text-white'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                ? 'bg-blue-600 text-white'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 }`}
             >
               {type === '' ? 'All Modalities' : type}
@@ -601,8 +601,8 @@ export default function DiagnosticsPage() {
                         </span>
                         <span
                           className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${isSigned
-                              ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
-                              : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
+                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
                             }`}
                         >
                           {isSigned ? (
@@ -690,7 +690,7 @@ export default function DiagnosticsPage() {
             </div>
 
             <form onSubmit={handleCreateReport} className="space-y-4 text-xs">
-              {activeQueueItem && (
+              {/* {activeQueueItem && (
                 <div className="flex items-center justify-between rounded-lg bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/50 p-2.5 text-xs text-purple-900 dark:text-purple-200">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400 shrink-0" />
@@ -715,48 +715,47 @@ export default function DiagnosticsPage() {
                     Unlink
                   </button>
                 </div>
-              )}
+              )} */}
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="font-semibold text-foreground">
                     Patient *
                   </label>
-                  <select
-                    value={selectedPatientId}
-                    onChange={(e) => setSelectedPatientId(e.target.value)}
-                    className="w-full rounded-lg border border-input bg-background p-2 font-medium outline-none"
-                  >
-                    {patients.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.uhid} - {p.first_name} {p.last_name}
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    type="text"
+                    readOnly
+                    value={
+                      (() => {
+                        const pt =
+                          activeQueueItem?.invoice?.patient ||
+                          patients.find((p) => p.id === selectedPatientId);
+                        return pt
+                          ? `${pt.uhid ? `${pt.uhid} - ` : ''}${pt.first_name || ''} ${pt.last_name || ''}`.trim()
+                          : 'No patient selected';
+                      })()
+                    }
+                    className="w-full rounded-lg border border-input bg-muted/60 p-2 font-medium text-foreground outline-none cursor-not-allowed select-none"
+                  />
                 </div>
 
                 <div className="space-y-1">
                   <label className="font-semibold text-foreground">
                     Modality / Test Type *
                   </label>
-                  <select
-                    value={testType}
-                    onChange={(e) => {
-                      setTestType(e.target.value);
-                      if (e.target.value === 'USG')
-                        setTestName('Abdominal & Pelvic Ultrasound (USG)');
-                      if (e.target.value === 'LAB')
-                        setTestName('Complete Blood Count (CBC) with Differential');
-                      if (e.target.value === 'XRAY')
-                        setTestName('Chest PA Digital Radiograph');
-                    }}
-                    className="w-full rounded-lg border border-input bg-background p-2 font-medium outline-none"
-                  >
-                    <option value="USG">USG (Ultrasound)</option>
-                    <option value="LAB">Laboratory Pathology</option>
-                    <option value="XRAY">Digital X-Ray Radiograph</option>
-                    <option value="ECG">12-Lead Electrocardiogram</option>
-                  </select>
+                  <input
+                    type="text"
+                    readOnly
+                    value={
+                      {
+                        USG: 'USG (Ultrasound)',
+                        LAB: 'Laboratory Pathology',
+                        XRAY: 'Digital X-Ray Radiograph',
+                        ECG: '12-Lead Electrocardiogram',
+                      }[testType] || testType
+                    }
+                    className="w-full rounded-lg border border-input bg-muted/60 p-2 font-medium text-foreground outline-none cursor-not-allowed select-none"
+                  />
                 </div>
               </div>
 

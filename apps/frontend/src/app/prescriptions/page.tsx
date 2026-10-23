@@ -266,7 +266,7 @@ export default function PrescriptionsPage() {
           </p>
         </div>
 
-        {hasPermission('clinical:prescription:write') && (
+        {/* {hasPermission('clinical:prescription:write') && (
           <button
             onClick={() => {
               setSelectedInvoiceItemId(null);
@@ -280,7 +280,7 @@ export default function PrescriptionsPage() {
             <Plus className="h-4 w-4" />
             <span>Write New Prescription</span>
           </button>
-        )}
+        )} */}
       </div>
 
       {/* Patient Queue Section */}
@@ -641,17 +641,21 @@ export default function PrescriptionsPage() {
                   <label className="font-semibold text-foreground">
                     Select Center Patient *
                   </label>
-                  <select
-                    value={selectedPatientId}
-                    onChange={(e) => setSelectedPatientId(e.target.value)}
-                    className="w-full rounded-lg border border-input bg-background p-2 font-medium focus:ring-2 focus:ring-primary outline-none"
-                  >
-                    {patients.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.uhid} - {p.first_name} {p.last_name}
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    type="text"
+                    readOnly
+                    value={
+                      (() => {
+                        const pt =
+                          activeQueueItem?.invoice?.patient ||
+                          patients.find((p) => p.id === selectedPatientId);
+                        return pt
+                          ? `${pt.uhid ? `${pt.uhid} - ` : ''}${pt.first_name || ''} ${pt.last_name || ''}`.trim()
+                          : 'No patient selected';
+                      })()
+                    }
+                    className="w-full rounded-lg border border-input bg-muted/60 p-2 font-medium text-foreground outline-none cursor-not-allowed select-none"
+                  />
                 </div>
 
                 <div className="space-y-1">

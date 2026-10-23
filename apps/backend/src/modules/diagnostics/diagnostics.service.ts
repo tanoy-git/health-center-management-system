@@ -5,14 +5,26 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
+export interface ReportAttributeResultDto {
+  attributeId?: string;
+  attributeName: string;
+  attributeUnit?: string;
+  referenceRange?: string;
+  value: string;
+  flag?: string; // NORMAL, HIGH, LOW, ABNORMAL
+  displayOrder?: number;
+}
+
 export interface CreateDiagnosticReportDto {
   patientId: string;
+  serviceId?: string;
   testType: string; // LAB, USG, XRAY, ECG
   testName: string;
   findings: string; // Rich-text formatted HTML / Markdown
   impression?: string;
   attachments?: string[]; // Array of uploaded URLs from MinIO/S3
   invoiceItemId?: string; // queue item linkage
+  attributeResults?: ReportAttributeResultDto[];
 }
 
 export interface SignOffReportDto {
@@ -21,11 +33,29 @@ export interface SignOffReportDto {
 }
 
 export interface UpdateDiagnosticReportDto {
+  serviceId?: string;
   testType?: string;
   testName?: string;
   findings?: string;
   impression?: string;
   attachments?: string[];
+  attributeResults?: ReportAttributeResultDto[];
+}
+
+export interface CreateServiceTestAttributeDto {
+  name: string;
+  unit?: string;
+  reference_range?: string;
+  display_order?: number;
+  status?: string;
+}
+
+export interface UpdateServiceTestAttributeDto {
+  name?: string;
+  unit?: string;
+  reference_range?: string;
+  display_order?: number;
+  status?: string;
 }
 
 @Injectable()
@@ -208,6 +238,17 @@ export class DiagnosticsService {
             phone: true,
           },
         },
+        service: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            category: true,
+          },
+        },
+        attribute_results: {
+          orderBy: { display_order: 'asc' },
+        },
       },
     });
   }
@@ -218,6 +259,10 @@ export class DiagnosticsService {
       include: {
         patient: true,
         center: true,
+        service: true,
+        attribute_results: {
+          orderBy: { display_order: 'asc' },
+        },
       },
     });
 
@@ -248,6 +293,7 @@ export class DiagnosticsService {
         report_number: reportNumber,
         patient_id: dto.patientId,
         doctor_id: doctorId,
+        service_id: dto.serviceId || null,
         test_type: dto.testType,
         test_name: dto.testName,
         findings: dto.findings,
@@ -255,9 +301,28 @@ export class DiagnosticsService {
         attachments: dto.attachments ? JSON.stringify(dto.attachments) : null,
         status: 'PENDING',
         created_by: doctorId,
+        attribute_results:
+          dto.attributeResults && dto.attributeResults.length > 0
+            ? {
+                create: dto.attributeResults.map((attr, idx) => ({
+                  attribute_id: attr.attributeId || null,
+                  attribute_name: attr.attributeName,
+                  attribute_unit: attr.attributeUnit || null,
+                  reference_range: attr.referenceRange || null,
+                  value: attr.value || '',
+                  flag: attr.flag || null,
+                  display_order:
+                    attr.displayOrder !== undefined ? attr.displayOrder : idx,
+                })),
+              }
+            : undefined,
       },
       include: {
         patient: true,
+        service: true,
+        attribute_results: {
+          orderBy: { display_order: 'asc' },
+        },
       },
     });
 
@@ -312,6 +377,10 @@ export class DiagnosticsService {
       },
       include: {
         patient: true,
+        service: true,
+        attribute_results: {
+          orderBy: { display_order: 'asc' },
+        },
       },
     });
   }
@@ -333,6 +402,7 @@ export class DiagnosticsService {
       updated_by: userId,
     };
 
+    if (dto.serviceId !== undefined) updateData.service_id = dto.serviceId || null;
     if (dto.testType !== undefined) updateData.test_type = dto.testType;
     if (dto.testName !== undefined) updateData.test_name = dto.testName;
     if (dto.findings !== undefined) updateData.findings = dto.findings;
@@ -341,12 +411,212 @@ export class DiagnosticsService {
       updateData.attachments = dto.attachments ? JSON.stringify(dto.attachments) : null;
     }
 
-    return this.prisma.diagnosticReport.update({
+    if (dto.attributeResults !== undefined) {
+      // Re-create attribute results
+      await this.prisma.diagnosticReportAttributeResult.deleteMany({
+        where: { report_id: id },
+      });
+
+      if (dto.attributeResults.length > 0) {
+        await this.prisma.diagnosticReportAttributeResult.createMany({
+          data: dto.attributeResults.map((attr, idx) => ({
+            report_id: id,
+            attribute_id: attr.attributeId || null,
+            attribute_name: attr.attributeName,
+            attribute_unit: attr.attributeUnit || null,
+            reference_range: attr.referenceRange || null,
+            value: attr.value || '',
+            flag: attr.flag || null,
+            display_order:
+              attr.displayOrder !== undefined ? attr.displayOrder : idx,
+          })),
+        });
+      }
+    }
+
+    await this.prisma.diagnosticReport.update({
       where: { id },
       data: updateData,
+    });
+
+    return this.prisma.diagnosticReport.findFirst({
+      where: { id },
       include: {
         patient: true,
+        service: true,
+        attribute_results: {
+          orderBy: { display_order: 'asc' },
+        },
       },
     });
+  }
+
+  // ---------------------------------------------
+  // SERVICE TEST ATTRIBUTES (MASTER-DETAILS)
+  // ---------------------------------------------
+  async getDiagnosticServices(centerId: string, search?: string) {
+    const where: any = {
+      center_id: centerId,
+      deleted_at: null,
+      status: 'ACTIVE',
+    };
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { code: { contains: search, mode: 'insensitive' } },
+        { category: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    return this.prisma.serviceCatalog.findMany({
+      where,
+      orderBy: [{ category: 'asc' }, { name: 'asc' }],
+      include: {
+        _count: {
+          select: {
+            attributes: {
+              where: { deleted_at: null },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  async getServiceAttributes(serviceId: string, centerId: string) {
+    const service = await this.prisma.serviceCatalog.findFirst({
+      where: { id: serviceId, center_id: centerId, deleted_at: null },
+    });
+    if (!service) {
+      throw new NotFoundException('Service not found or inaccessible for this center');
+    }
+
+    return this.prisma.serviceTestAttribute.findMany({
+      where: {
+        service_id: serviceId,
+        deleted_at: null,
+      },
+      orderBy: { display_order: 'asc' },
+    });
+  }
+
+  async createServiceAttribute(
+    serviceId: string,
+    centerId: string,
+    userId: string,
+    dto: CreateServiceTestAttributeDto,
+  ) {
+    const service = await this.prisma.serviceCatalog.findFirst({
+      where: { id: serviceId, center_id: centerId, deleted_at: null },
+    });
+    if (!service) {
+      throw new NotFoundException('Service not found');
+    }
+
+    const currentCount = await this.prisma.serviceTestAttribute.count({
+      where: { service_id: serviceId, deleted_at: null },
+    });
+
+    return this.prisma.serviceTestAttribute.create({
+      data: {
+        service_id: serviceId,
+        name: dto.name.trim(),
+        unit: dto.unit?.trim() || null,
+        reference_range: dto.reference_range?.trim() || null,
+        display_order:
+          dto.display_order !== undefined ? dto.display_order : currentCount,
+        status: dto.status || 'ACTIVE',
+        created_by: userId,
+      },
+    });
+  }
+
+  async updateServiceAttribute(
+    attributeId: string,
+    centerId: string,
+    userId: string,
+    dto: UpdateServiceTestAttributeDto,
+  ) {
+    const attribute = await this.prisma.serviceTestAttribute.findFirst({
+      where: { id: attributeId, deleted_at: null },
+      include: { service: true },
+    });
+    if (!attribute || attribute.service.center_id !== centerId) {
+      throw new NotFoundException('Attribute not found');
+    }
+
+    return this.prisma.serviceTestAttribute.update({
+      where: { id: attributeId },
+      data: {
+        name: dto.name !== undefined ? dto.name.trim() : undefined,
+        unit: dto.unit !== undefined ? dto.unit.trim() || null : undefined,
+        reference_range:
+          dto.reference_range !== undefined
+            ? dto.reference_range.trim() || null
+            : undefined,
+        display_order:
+          dto.display_order !== undefined ? dto.display_order : undefined,
+        status: dto.status !== undefined ? dto.status : undefined,
+        updated_by: userId,
+      },
+    });
+  }
+
+  async deleteServiceAttribute(attributeId: string, centerId: string) {
+    const attribute = await this.prisma.serviceTestAttribute.findFirst({
+      where: { id: attributeId, deleted_at: null },
+      include: { service: true },
+    });
+    if (!attribute || attribute.service.center_id !== centerId) {
+      throw new NotFoundException('Attribute not found');
+    }
+
+    return this.prisma.serviceTestAttribute.update({
+      where: { id: attributeId },
+      data: {
+        deleted_at: new Date(),
+        status: 'INACTIVE',
+      },
+    });
+  }
+
+  async batchSaveServiceAttributes(
+    serviceId: string,
+    centerId: string,
+    userId: string,
+    attributes: CreateServiceTestAttributeDto[],
+  ) {
+    const service = await this.prisma.serviceCatalog.findFirst({
+      where: { id: serviceId, center_id: centerId, deleted_at: null },
+    });
+    if (!service) {
+      throw new NotFoundException('Service not found');
+    }
+
+    // Soft delete existing attributes
+    await this.prisma.serviceTestAttribute.updateMany({
+      where: { service_id: serviceId, deleted_at: null },
+      data: { deleted_at: new Date(), status: 'INACTIVE' },
+    });
+
+    // Create new list
+    for (let i = 0; i < attributes.length; i++) {
+      const a = attributes[i];
+      if (!a.name || !a.name.trim()) continue;
+      await this.prisma.serviceTestAttribute.create({
+        data: {
+          service_id: serviceId,
+          name: a.name.trim(),
+          unit: a.unit?.trim() || null,
+          reference_range: a.reference_range?.trim() || null,
+          display_order: a.display_order !== undefined ? a.display_order : i,
+          status: 'ACTIVE',
+          created_by: userId,
+        },
+      });
+    }
+
+    return this.getServiceAttributes(serviceId, centerId);
   }
 }

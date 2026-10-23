@@ -26,6 +26,7 @@ import {
   Tags,
   Settings,
   Coins,
+  FlaskConical,
 } from 'lucide-react';
 
 interface NavItem {
@@ -53,6 +54,12 @@ export default function Sidebar() {
       href: '/services',
       icon: Tags,
       permission: 'billing:pos:access',
+    },
+    {
+      name: 'Lab Test Attributes',
+      href: '/lab-test-attributes',
+      icon: FlaskConical,
+      permission: 'diagnostics:reports:read',
     },
     {
       name: 'Medicine & Formulary Management',

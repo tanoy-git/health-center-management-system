@@ -22,6 +22,11 @@ import {
   User,
   Users,
   Pencil,
+  Printer,
+  FlaskConical,
+  Trash2,
+  Eye,
+  AlertTriangle,
 } from 'lucide-react';
 
 import DateRangeFilter, {
@@ -65,6 +70,26 @@ export default function DiagnosticsPage() {
   const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Diagnostic Services & Lab Attributes Master State
+  const [diagnosticServices, setDiagnosticServices] = useState<any[]>([]);
+  const [selectedServiceId, setSelectedServiceId] = useState<string>('');
+  const [reportAttributes, setReportAttributes] = useState<
+    Array<{
+      attributeId?: string;
+      attributeName: string;
+      attributeUnit?: string;
+      referenceRange?: string;
+      value: string;
+      flag: string;
+      displayOrder: number;
+    }>
+  >([]);
+  const [loadingAttributes, setLoadingAttributes] = useState(false);
+
+  // View / Print Report Modal State
+  const [viewReportModalOpen, setViewReportModalOpen] = useState(false);
+  const [viewingReport, setViewingReport] = useState<any | null>(null);
 
   // Sign-off Modal
   const [signOffModalOpen, setSignOffModalOpen] = useState(false);
@@ -120,6 +145,89 @@ export default function DiagnosticsPage() {
     loadQueue();
   }, [activeCenter, testTypeFilter]);
 
+  const fetchServiceAttributes = async (serviceId: string) => {
+    if (!serviceId) {
+      setReportAttributes([]);
+      return;
+    }
+    setLoadingAttributes(true);
+    try {
+      const attrs = await apiRequest(`/diagnostics/services/${serviceId}/attributes`);
+      if (Array.isArray(attrs) && attrs.length > 0) {
+        setReportAttributes(
+          attrs.map((a: any, idx: number) => ({
+            attributeId: a.id,
+            attributeName: a.name,
+            attributeUnit: a.unit || '',
+            referenceRange: a.reference_range || '',
+            value: '',
+            flag: 'NORMAL',
+            displayOrder: a.display_order || idx + 1,
+          }))
+        );
+      } else {
+        setReportAttributes([]);
+      }
+    } catch (err) {
+      console.error('Failed to fetch service attributes:', err);
+    } finally {
+      setLoadingAttributes(false);
+    }
+  };
+
+  const handleSelectService = async (serviceId: string) => {
+    setSelectedServiceId(serviceId);
+    if (!serviceId) {
+      setReportAttributes([]);
+      return;
+    }
+    const svc = diagnosticServices.find((s) => s.id === serviceId);
+    if (svc) {
+      setTestName(svc.name);
+      const cat = (svc.category?.code || svc.category?.name || '').toUpperCase();
+      if (cat.includes('USG') || svc.name.toUpperCase().includes('USG')) {
+        setTestType('USG');
+      } else if (
+        cat.includes('XRAY') ||
+        cat.includes('RADIOLOGY') ||
+        svc.name.toUpperCase().includes('X-RAY')
+      ) {
+        setTestType('XRAY');
+      } else if (cat.includes('ECG') || svc.name.toUpperCase().includes('ECG')) {
+        setTestType('ECG');
+      } else {
+        setTestType('LAB');
+      }
+    }
+    await fetchServiceAttributes(serviceId);
+  };
+
+  const handleAttributeChange = (index: number, field: string, val: any) => {
+    setReportAttributes((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: val };
+      return updated;
+    });
+  };
+
+  const handleAddCustomAttribute = () => {
+    setReportAttributes((prev) => [
+      ...prev,
+      {
+        attributeName: '',
+        attributeUnit: '',
+        referenceRange: '',
+        value: '',
+        flag: 'NORMAL',
+        displayOrder: prev.length + 1,
+      },
+    ]);
+  };
+
+  const handleRemoveAttribute = (index: number) => {
+    setReportAttributes((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const loadQueue = async () => {
     setQueueLoading(true);
     try {
@@ -132,7 +240,7 @@ export default function DiagnosticsPage() {
     }
   };
 
-  const handleAttendQueueItem = (item: any) => {
+  const handleAttendQueueItem = async (item: any) => {
     setSelectedInvoiceItemId(item.id);
     setActiveQueueItem(item);
     if (item.invoice?.patient?.id) {
@@ -145,6 +253,28 @@ export default function DiagnosticsPage() {
       `Patient presented for ${item.item_name}. Clinical evaluation and findings recorded below:\n\n`
     );
     setImpression('');
+
+    // Attempt to match service
+    let matchedSvcId = item.service_id;
+    if (!matchedSvcId && diagnosticServices.length > 0) {
+      const found = diagnosticServices.find(
+        (s) =>
+          s.id === item.service_id ||
+          s.name.toLowerCase() === (item.item_name || '').toLowerCase() ||
+          (item.item_name || '').toLowerCase().includes(s.name.toLowerCase()) ||
+          s.name.toLowerCase().includes((item.item_name || '').toLowerCase())
+      );
+      if (found) matchedSvcId = found.id;
+    }
+
+    if (matchedSvcId) {
+      setSelectedServiceId(matchedSvcId);
+      await fetchServiceAttributes(matchedSvcId);
+    } else {
+      setSelectedServiceId('');
+      setReportAttributes([]);
+    }
+
     setIsModalOpen(true);
   };
 
@@ -175,6 +305,9 @@ export default function DiagnosticsPage() {
 
       const emps = await apiRequest('/hr/employees').catch(() => []);
       setEmployees(emps || []);
+
+      const svcs = await apiRequest('/diagnostics/services').catch(() => []);
+      setDiagnosticServices(svcs || []);
     } catch (e) {
       console.error(e);
     } finally {
@@ -206,7 +339,7 @@ export default function DiagnosticsPage() {
     }
   };
 
-  const handleOpenEditReport = (r: any) => {
+  const handleOpenEditReport = async (r: any) => {
     setEditingReport(r);
     setSelectedInvoiceItemId(null);
     setActiveQueueItem({
@@ -221,6 +354,27 @@ export default function DiagnosticsPage() {
     setTestName(r.test_name || '');
     setFindings(r.findings || '');
     setImpression(r.impression || '');
+    setSelectedServiceId(r.service_id || '');
+
+    // Map existing attribute results if available
+    if (r.attribute_results && Array.isArray(r.attribute_results) && r.attribute_results.length > 0) {
+      setReportAttributes(
+        r.attribute_results.map((ar: any, idx: number) => ({
+          attributeId: ar.attribute_id,
+          attributeName: ar.attribute_name,
+          attributeUnit: ar.attribute_unit || '',
+          referenceRange: ar.reference_range || '',
+          value: ar.value || '',
+          flag: ar.flag || 'NORMAL',
+          displayOrder: ar.display_order || idx + 1,
+        }))
+      );
+    } else if (r.service_id) {
+      await fetchServiceAttributes(r.service_id);
+    } else {
+      setReportAttributes([]);
+    }
+
     let urls: string[] = [];
     if (r.attachments) {
       try {
@@ -235,15 +389,29 @@ export default function DiagnosticsPage() {
     e.preventDefault();
     setSubmitting(true);
     try {
+      const cleanAttributeResults = reportAttributes
+        .filter((a) => a.attributeName && a.attributeName.trim())
+        .map((a, idx) => ({
+          attributeId: a.attributeId || undefined,
+          attributeName: a.attributeName.trim(),
+          attributeUnit: a.attributeUnit?.trim() || undefined,
+          referenceRange: a.referenceRange?.trim() || undefined,
+          value: a.value?.trim() || '',
+          flag: a.flag || 'NORMAL',
+          displayOrder: a.displayOrder || idx + 1,
+        }));
+
       if (editingReport) {
         await apiRequest(`/diagnostics/reports/${editingReport.id}`, {
           method: 'PUT',
           body: JSON.stringify({
+            serviceId: selectedServiceId || undefined,
             testType,
             testName,
             findings,
             impression,
             attachments: uploadedUrls,
+            attributeResults: cleanAttributeResults,
           }),
         });
 
@@ -251,6 +419,8 @@ export default function DiagnosticsPage() {
         setEditingReport(null);
         setSelectedInvoiceItemId(null);
         setActiveQueueItem(null);
+        setSelectedServiceId('');
+        setReportAttributes([]);
         setFindings('');
         setImpression('');
         setUploadedUrls([]);
@@ -262,18 +432,22 @@ export default function DiagnosticsPage() {
           method: 'POST',
           body: JSON.stringify({
             patientId: selectedPatientId,
+            serviceId: selectedServiceId || undefined,
             testType,
             testName,
             findings,
             impression,
             attachments: uploadedUrls,
             invoiceItemId: selectedInvoiceItemId || undefined,
+            attributeResults: cleanAttributeResults,
           }),
         });
 
         setIsModalOpen(false);
         setSelectedInvoiceItemId(null);
         setActiveQueueItem(null);
+        setSelectedServiceId('');
+        setReportAttributes([]);
         setFindings('');
         setImpression('');
         setUploadedUrls([]);
@@ -692,6 +866,47 @@ export default function DiagnosticsPage() {
                           </p>
                         )}
                       </div>
+
+                      {/* Recorded Lab Attributes Summary */}
+                      {r.attribute_results && r.attribute_results.length > 0 && (
+                        <div className="rounded-lg border border-border/70 bg-muted/20 p-2.5 space-y-2">
+                          <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                            <span className="flex items-center gap-1 text-purple-600 dark:text-purple-400">
+                              <FlaskConical className="h-3 w-3" />
+                              <span>Lab Parameters ({r.attribute_results.length})</span>
+                            </span>
+                            <span className="text-[9px] font-mono text-muted-foreground">Relational</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {r.attribute_results.slice(0, 4).map((ar: any) => (
+                              <div
+                                key={ar.id || ar.attribute_name}
+                                className="flex items-center justify-between rounded bg-card px-2 py-1 text-[11px] border border-border/60"
+                              >
+                                <span className="truncate text-muted-foreground font-medium pr-1">
+                                  {ar.attribute_name}:
+                                </span>
+                                <span
+                                  className={`font-mono font-bold shrink-0 ${
+                                    ar.flag === 'HIGH' || ar.flag === 'ABNORMAL' || ar.flag === 'POSITIVE'
+                                      ? 'text-red-600 dark:text-red-400'
+                                      : ar.flag === 'LOW'
+                                      ? 'text-amber-600 dark:text-amber-400'
+                                      : 'text-foreground'
+                                  }`}
+                                >
+                                  {ar.value || '—'} {ar.attribute_unit || ''}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          {r.attribute_results.length > 4 && (
+                            <p className="text-[10px] text-muted-foreground text-center font-medium">
+                              +{r.attribute_results.length - 4} more parameters recorded
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="flex items-center justify-between pt-3 border-t border-border/80 text-xs">
@@ -700,6 +915,18 @@ export default function DiagnosticsPage() {
                       </span>
 
                       <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setViewingReport(r);
+                            setViewReportModalOpen(true);
+                          }}
+                          className="flex items-center gap-1 rounded-lg border border-border bg-card hover:bg-muted px-2.5 py-1.5 text-xs font-semibold text-foreground transition-colors shadow-sm"
+                          title="View & Print Laboratory Report"
+                        >
+                          <Printer className="h-3 w-3 text-purple-600 dark:text-purple-400" />
+                          <span>View / Print</span>
+                        </button>
+
                         {hasPermission('diagnostics:reports:write') && (
                           <button
                             onClick={() => handleOpenEditReport(r)}
@@ -742,10 +969,10 @@ export default function DiagnosticsPage() {
         );
       })()}
 
-      {/* New Diagnostic Report Modal */}
+      {/* New / Edit Diagnostic Report Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto animate-in fade-in">
+          <div className="w-full max-w-4xl rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto animate-in fade-in">
             <div className="flex items-center justify-between border-b border-border pb-3">
               <h2 className="text-sm font-bold text-foreground">
                 {editingReport
@@ -764,33 +991,6 @@ export default function DiagnosticsPage() {
             </div>
 
             <form onSubmit={handleCreateReport} className="space-y-4 text-xs">
-              {/* {activeQueueItem && (
-                <div className="flex items-center justify-between rounded-lg bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-900/50 p-2.5 text-xs text-purple-900 dark:text-purple-200">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-purple-600 dark:text-purple-400 shrink-0" />
-                    <div>
-                      <span className="font-semibold">Linked Order:</span>{' '}
-                      <span className="font-bold">
-                        {activeQueueItem.item_name}
-                      </span>{' '}
-                      <span className="font-mono text-[11px] opacity-80">
-                        ({activeQueueItem.invoice?.invoice_number})
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedInvoiceItemId(null);
-                      setActiveQueueItem(null);
-                    }}
-                    className="text-[11px] text-purple-600 dark:text-purple-400 hover:underline font-semibold"
-                  >
-                    Unlink
-                  </button>
-                </div>
-              )} */}
-
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="font-semibold text-foreground">
@@ -833,6 +1033,37 @@ export default function DiagnosticsPage() {
                 </div>
               </div>
 
+              {/* Relational Diagnostic Service Master Selector */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-foreground flex items-center gap-1.5">
+                    <FlaskConical className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                    <span>Diagnostic Service Master * (Auto-Loads Lab Attributes)</span>
+                  </label>
+                  {selectedServiceId && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      <span>Attributes Mapped</span>
+                    </span>
+                  )}
+                </div>
+                <select
+                  value={selectedServiceId}
+                  onChange={(e) => handleSelectService(e.target.value)}
+                  className="w-full rounded-lg border border-input bg-background p-2 font-medium outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">-- Select Diagnostic Service (Auto-fetches parameters) --</option>
+                  {diagnosticServices.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.code} - {s.name} {s.category ? `(${s.category.name})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-muted-foreground">
+                  Selecting a service automatically retrieves its relational test attributes, units, and normal reference ranges.
+                </p>
+              </div>
+
               <div className="space-y-1">
                 <label className="font-semibold text-foreground">Test Name *</label>
                 <input
@@ -842,6 +1073,161 @@ export default function DiagnosticsPage() {
                   onChange={(e) => setTestName(e.target.value)}
                   className="w-full rounded-lg border border-input bg-background p-2 outline-none"
                 />
+              </div>
+
+              {/* Relational Lab Test Attributes & Parameters Results Table */}
+              <div className="rounded-xl border border-border bg-muted/20 p-3.5 space-y-3">
+                <div className="flex items-center justify-between border-b border-border/80 pb-2">
+                  <div className="flex items-center gap-2">
+                    <FlaskConical className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    <div>
+                      <h4 className="font-bold text-foreground text-xs">
+                        Relational Test Attributes & Measured Values
+                      </h4>
+                      <p className="text-[10px] text-muted-foreground">
+                        Service-wise attributes automatically fetched and mapped to this report
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 px-2 py-0.5 text-[10px] font-bold">
+                      {reportAttributes.length} Parameters
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleAddCustomAttribute}
+                      className="flex items-center gap-1 rounded-lg border border-border bg-card px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-muted shadow-xs transition-colors"
+                    >
+                      <Plus className="h-3 w-3 text-blue-600" />
+                      <span>Add Parameter</span>
+                    </button>
+                  </div>
+                </div>
+
+                {loadingAttributes ? (
+                  <div className="py-6 text-center text-xs text-muted-foreground">
+                    <RotateCcw className="h-4 w-4 animate-spin mx-auto mb-1 text-purple-600" />
+                    Fetching service attributes and reference ranges...
+                  </div>
+                ) : reportAttributes.length === 0 ? (
+                  <div className="py-4 text-center text-xs text-muted-foreground space-y-1">
+                    <p className="font-medium">No attributes mapped to this service yet.</p>
+                    <p className="text-[10px]">
+                      Select a service master above or click &quot;Add Parameter&quot; to define test values.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b border-border/80 text-[10px] font-semibold uppercase text-muted-foreground">
+                          <th className="py-1.5 px-2">Parameter</th>
+                          <th className="py-1.5 px-2 w-32">Measured Result *</th>
+                          <th className="py-1.5 px-2 w-20">Unit</th>
+                          <th className="py-1.5 px-2 w-40">Reference Range</th>
+                          <th className="py-1.5 px-2 w-28">Flag</th>
+                          <th className="py-1.5 px-2 w-8 text-center"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border/60">
+                        {reportAttributes.map((attr, idx) => (
+                          <tr key={idx} className="hover:bg-muted/40 transition-colors">
+                            <td className="py-1.5 px-2 font-medium text-foreground">
+                              {attr.attributeId ? (
+                                <span className="font-semibold">{attr.attributeName}</span>
+                              ) : (
+                                <input
+                                  type="text"
+                                  placeholder="Parameter name"
+                                  value={attr.attributeName}
+                                  onChange={(e) =>
+                                    handleAttributeChange(idx, 'attributeName', e.target.value)
+                                  }
+                                  className="w-full rounded border border-input bg-background px-2 py-1 text-xs"
+                                />
+                              )}
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <input
+                                type="text"
+                                placeholder="e.g. 14.2 or Normal"
+                                value={attr.value}
+                                onChange={(e) =>
+                                  handleAttributeChange(idx, 'value', e.target.value)
+                                }
+                                className="w-full rounded border border-input bg-background px-2 py-1 font-mono text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
+                              />
+                            </td>
+                            <td className="py-1.5 px-2 font-mono text-[11px] text-muted-foreground">
+                              {attr.attributeId ? (
+                                attr.attributeUnit || '—'
+                              ) : (
+                                <input
+                                  type="text"
+                                  placeholder="Unit"
+                                  value={attr.attributeUnit || ''}
+                                  onChange={(e) =>
+                                    handleAttributeChange(idx, 'attributeUnit', e.target.value)
+                                  }
+                                  className="w-full rounded border border-input bg-background px-1.5 py-1 text-xs"
+                                />
+                              )}
+                            </td>
+                            <td className="py-1.5 px-2 text-[11px] text-muted-foreground">
+                              {attr.attributeId ? (
+                                <span className="truncate block max-w-[160px]" title={attr.referenceRange}>
+                                  {attr.referenceRange || '—'}
+                                </span>
+                              ) : (
+                                <input
+                                  type="text"
+                                  placeholder="Ref range"
+                                  value={attr.referenceRange || ''}
+                                  onChange={(e) =>
+                                    handleAttributeChange(idx, 'referenceRange', e.target.value)
+                                  }
+                                  className="w-full rounded border border-input bg-background px-1.5 py-1 text-xs"
+                                />
+                              )}
+                            </td>
+                            <td className="py-1.5 px-2">
+                              <select
+                                value={attr.flag || 'NORMAL'}
+                                onChange={(e) =>
+                                  handleAttributeChange(idx, 'flag', e.target.value)
+                                }
+                                className={`w-full rounded border border-input bg-background px-1.5 py-1 text-[11px] font-bold ${
+                                  attr.flag === 'HIGH' || attr.flag === 'ABNORMAL' || attr.flag === 'POSITIVE'
+                                    ? 'text-red-600 dark:text-red-400'
+                                    : attr.flag === 'LOW'
+                                    ? 'text-amber-600 dark:text-amber-400'
+                                    : 'text-emerald-600 dark:text-emerald-400'
+                                }`}
+                              >
+                                <option value="NORMAL">NORMAL</option>
+                                <option value="HIGH">HIGH</option>
+                                <option value="LOW">LOW</option>
+                                <option value="ABNORMAL">ABNORMAL</option>
+                                <option value="POSITIVE">POSITIVE</option>
+                                <option value="NEGATIVE">NEGATIVE</option>
+                              </select>
+                            </td>
+                            <td className="py-1.5 px-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveAttribute(idx)}
+                                className="text-muted-foreground hover:text-red-500 transition-colors p-1"
+                                title="Remove parameter"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-1">
@@ -927,6 +1313,246 @@ export default function DiagnosticsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* View & Print Report Modal */}
+      {viewReportModalOpen && viewingReport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 overflow-y-auto animate-in fade-in">
+          <div className="w-full max-w-4xl rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto">
+            {/* Modal Actions Bar (hidden on print) */}
+            <div className="flex items-center justify-between border-b border-border pb-3 print:hidden">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                <h3 className="text-sm font-bold text-foreground">
+                  Diagnostic & Laboratory Pathology Report ({viewingReport.report_number})
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-1.5 text-xs font-semibold shadow-xs transition-colors"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  <span>Print Report</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewReportModalOpen(false);
+                    setViewingReport(null);
+                  }}
+                  className="rounded p-1 text-muted-foreground hover:bg-muted"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Printable Pathology Sheet */}
+            <div className="bg-white text-slate-900 p-6 sm:p-8 rounded-xl border border-slate-200 shadow-sm space-y-6">
+              {/* Center Letterhead */}
+              <div className="border-b-2 border-slate-900 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-xl font-black tracking-tight text-blue-900 uppercase">
+                    {activeCenter?.name || 'Central Health Diagnostic Center'}
+                  </h1>
+                  <p className="text-xs text-slate-600 font-medium">
+                    {activeCenter?.address || 'Medical Avenue, Diagnostic Tower'}
+                  </p>
+                  <p className="text-[11px] text-slate-500 font-mono">
+                    Phone: {activeCenter?.phone || '+880 1700-000000'} | Automated Pathology & Imaging Records
+                  </p>
+                </div>
+                <div className="text-right sm:border-l-2 sm:border-slate-200 sm:pl-4">
+                  <span className="inline-block bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded tracking-wider uppercase">
+                    Department of Laboratory Medicine
+                  </span>
+                  <p className="font-mono text-sm font-bold text-slate-900 mt-1">
+                    {viewingReport.report_number}
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Date: {new Date(viewingReport.created_at).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              {/* Patient & Order Demographics Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-lg border border-slate-200 text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-semibold block">Patient Name</span>
+                  <span className="font-bold text-slate-900">
+                    {viewingReport.patient?.first_name} {viewingReport.patient?.last_name}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-semibold block">UHID / Patient ID</span>
+                  <span className="font-mono font-bold text-blue-700">
+                    {viewingReport.patient?.uhid || '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-semibold block">Age / Gender</span>
+                  <span className="font-medium text-slate-800">
+                    {viewingReport.patient?.age ? `${viewingReport.patient.age} Yrs` : '—'} / {viewingReport.patient?.gender || '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 uppercase font-semibold block">Test Modality</span>
+                  <span className="font-bold text-slate-800">
+                    {viewingReport.test_type} Examination
+                  </span>
+                </div>
+              </div>
+
+              {/* Investigation Header */}
+              <div className="bg-slate-900 text-white px-4 py-2 rounded flex items-center justify-between">
+                <span className="font-bold text-sm tracking-wide uppercase">
+                  Investigation: {viewingReport.test_name}
+                </span>
+                <span className="text-[11px] font-mono opacity-80">
+                  Status: {viewingReport.status}
+                </span>
+              </div>
+
+              {/* Relational Attributes & Parameters Table */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    Laboratory Observed Parameters & Reference Intervals
+                  </h4>
+                  {viewingReport.attribute_results && (
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {viewingReport.attribute_results.length} parameters analyzed
+                    </span>
+                  )}
+                </div>
+
+                {viewingReport.attribute_results && viewingReport.attribute_results.length > 0 ? (
+                  <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10px]">
+                          <th className="py-2 px-3">Test Investigation / Parameter</th>
+                          <th className="py-2 px-3">Observed Result</th>
+                          <th className="py-2 px-3">Unit</th>
+                          <th className="py-2 px-3">Biological Reference Interval</th>
+                          <th className="py-2 px-3 text-center">Assessment</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {viewingReport.attribute_results.map((ar: any, idx: number) => {
+                          const isAbnormal =
+                            ar.flag === 'HIGH' || ar.flag === 'ABNORMAL' || ar.flag === 'POSITIVE';
+                          const isLow = ar.flag === 'LOW';
+
+                          return (
+                            <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}>
+                              <td className="py-2 px-3 font-semibold text-slate-900">
+                                {ar.attribute_name}
+                              </td>
+                              <td
+                                className={`py-2 px-3 font-mono font-bold ${
+                                  isAbnormal
+                                    ? 'text-red-600'
+                                    : isLow
+                                    ? 'text-amber-600'
+                                    : 'text-slate-900'
+                                }`}
+                              >
+                                {ar.value || '—'}
+                              </td>
+                              <td className="py-2 px-3 font-mono text-slate-600 text-[11px]">
+                                {ar.attribute_unit || '—'}
+                              </td>
+                              <td className="py-2 px-3 text-slate-600 text-[11px]">
+                                {ar.reference_range || '—'}
+                              </td>
+                              <td className="py-2 px-3 text-center">
+                                <span
+                                  className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                                    isAbnormal
+                                      ? 'bg-red-100 text-red-800'
+                                      : isLow
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-emerald-100 text-emerald-800'
+                                  }`}
+                                >
+                                  {ar.flag || 'NORMAL'}
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 italic p-3 bg-slate-50 rounded border border-slate-200">
+                    No discrete quantitative parameters recorded. See findings below.
+                  </p>
+                )}
+              </div>
+
+              {/* Clinical Findings */}
+              <div className="space-y-1.5 border-t border-slate-200 pt-4 text-xs">
+                <h4 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider">
+                  Clinical Findings & Descriptive Notes
+                </h4>
+                <div className="bg-slate-50 p-3 rounded border border-slate-200 text-slate-800 whitespace-pre-wrap leading-relaxed font-sans text-xs">
+                  {viewingReport.findings}
+                </div>
+              </div>
+
+              {/* Impression */}
+              {viewingReport.impression && (
+                <div className="space-y-1 text-xs">
+                  <h4 className="font-bold text-blue-900 uppercase text-[11px] tracking-wider">
+                    Diagnostic Impression & Recommendation
+                  </h4>
+                  <div className="bg-blue-50/80 p-3 rounded border border-blue-200 text-blue-950 font-semibold leading-relaxed">
+                    {viewingReport.impression}
+                  </div>
+                </div>
+              )}
+
+              {/* Digital Authentication Block */}
+              <div className="border-t-2 border-slate-200 pt-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 text-emerald-700 font-bold">
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>Electronically Signed & Authenticated</span>
+                  </div>
+                  <p className="text-[10px] font-mono text-slate-500">
+                    Signature Hash: {viewingReport.digital_signature || `AUTH-${viewingReport.id?.substring(0, 8)}`}
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    Verified on: {viewingReport.signed_at ? new Date(viewingReport.signed_at).toLocaleString() : new Date(viewingReport.updated_at).toLocaleString()}
+                  </p>
+                </div>
+
+                <div className="text-right sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0">
+                  <p className="font-bold text-slate-900">
+                    {viewingReport.pathologist
+                      ? `Dr. ${viewingReport.pathologist.first_name} ${viewingReport.pathologist.last_name}`
+                      : 'Consultant Pathologist & Radiologist'}
+                  </p>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    MBBS, FCPS / MD (Pathology & Imaging)
+                  </p>
+                  <p className="text-[9px] text-slate-400">
+                    Verified Digital Laboratory Signature
+                  </p>
+                </div>
+              </div>
+
+              {/* Footer Notice */}
+              <div className="text-center pt-2 border-t border-slate-100 text-[9px] text-slate-400">
+                This is a computer generated diagnostic report. Please correlate clinically. All diagnostic attributes are preserved in secure electronic records.
+              </div>
+            </div>
           </div>
         </div>
       )}

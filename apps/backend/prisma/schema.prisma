@@ -306,9 +306,33 @@ model ServiceCatalog {
   invoice_items      InvoiceItem[]
   discount_campaigns DiscountCampaign[]
   commission_rules   ReferralCommissionRule[]
+  attributes         ServiceTestAttribute[]
+  diagnostic_reports DiagnosticReport[]
 
   @@unique([center_id, code])
   @@map("service_catalog")
+}
+
+model ServiceTestAttribute {
+  id              String    @id @default(uuid())
+  service_id      String
+  name            String    // Parameter name, e.g. "Hemoglobin (Hb)", "Total WBC Count"
+  unit            String?   // Unit of measurement, e.g. "g/dL", "mg/dL", "/cumm", "%"
+  reference_range String?   // Normal / reference value, e.g. "12.0 - 16.0"
+  display_order   Int       @default(0)
+  status          String    @default("ACTIVE") // ACTIVE, INACTIVE
+
+  // Audit & Soft Delete
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  deleted_at      DateTime?
+  created_by      String?
+  updated_by      String?
+
+  service         ServiceCatalog                    @relation(fields: [service_id], references: [id], onDelete: Cascade)
+  report_results  DiagnosticReportAttributeResult[]
+
+  @@map("service_test_attributes")
 }
 
 model DiscountCampaign {
@@ -597,6 +621,29 @@ model DiagnosticReport {
 
   center            Center    @relation(fields: [center_id], references: [id])
   patient           Patient   @relation(fields: [patient_id], references: [id])
+  service_id        String?
+  service           ServiceCatalog? @relation(fields: [service_id], references: [id])
+  attribute_results DiagnosticReportAttributeResult[]
 
   @@map("diagnostic_reports")
+}
+
+model DiagnosticReportAttributeResult {
+  id              String   @id @default(uuid())
+  report_id       String
+  attribute_id    String?
+  attribute_name  String
+  attribute_unit  String?
+  reference_range String?
+  value           String   // Lab measured result value entered for this test
+  flag            String?  // NORMAL, HIGH, LOW, ABNORMAL
+  display_order   Int      @default(0)
+
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  report          DiagnosticReport      @relation(fields: [report_id], references: [id], onDelete: Cascade)
+  attribute       ServiceTestAttribute? @relation(fields: [attribute_id], references: [id], onDelete: SetNull)
+
+  @@map("diagnostic_report_attribute_results")
 }

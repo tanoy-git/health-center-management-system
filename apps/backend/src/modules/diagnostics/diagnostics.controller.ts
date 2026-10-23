@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Delete,
   Patch,
   Body,
   Param,
@@ -13,6 +14,8 @@ import {
   DiagnosticsService,
   CreateDiagnosticReportDto,
   SignOffReportDto,
+  CreateServiceTestAttributeDto,
+  UpdateServiceTestAttributeDto,
 } from './diagnostics.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -27,6 +30,87 @@ import {
 export class DiagnosticsController {
   constructor(private readonly diagnosticsService: DiagnosticsService) { }
 
+  // ---------------------------------------------
+  // SERVICE TEST ATTRIBUTES (MASTER-DETAILS)
+  // ---------------------------------------------
+  @Get('services')
+  @RequirePermissions('diagnostics:reports:read')
+  async getDiagnosticServices(
+    @CurrentTenant() centerId: string,
+    @Query('search') search?: string,
+  ) {
+    return this.diagnosticsService.getDiagnosticServices(centerId, search);
+  }
+
+  @Get('services/:serviceId/attributes')
+  @RequirePermissions('diagnostics:reports:read')
+  async getServiceAttributes(
+    @Param('serviceId') serviceId: string,
+    @CurrentTenant() centerId: string,
+  ) {
+    return this.diagnosticsService.getServiceAttributes(serviceId, centerId);
+  }
+
+  @Post('services/:serviceId/attributes')
+  @RequirePermissions('diagnostics:reports:write')
+  async createServiceAttribute(
+    @Param('serviceId') serviceId: string,
+    @CurrentTenant() centerId: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: CreateServiceTestAttributeDto,
+  ) {
+    return this.diagnosticsService.createServiceAttribute(
+      serviceId,
+      centerId,
+      userId,
+      body,
+    );
+  }
+
+  @Put('attributes/:id')
+  @RequirePermissions('diagnostics:reports:write')
+  async updateServiceAttribute(
+    @Param('id') id: string,
+    @CurrentTenant() centerId: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: UpdateServiceTestAttributeDto,
+  ) {
+    return this.diagnosticsService.updateServiceAttribute(
+      id,
+      centerId,
+      userId,
+      body,
+    );
+  }
+
+  @Delete('attributes/:id')
+  @RequirePermissions('diagnostics:reports:write')
+  async deleteServiceAttribute(
+    @Param('id') id: string,
+    @CurrentTenant() centerId: string,
+  ) {
+    return this.diagnosticsService.deleteServiceAttribute(id, centerId);
+  }
+
+  @Post('services/:serviceId/attributes/batch')
+  @RequirePermissions('diagnostics:reports:write')
+  async batchSaveServiceAttributes(
+    @Param('serviceId') serviceId: string,
+    @CurrentTenant() centerId: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: { attributes: CreateServiceTestAttributeDto[] },
+  ) {
+    return this.diagnosticsService.batchSaveServiceAttributes(
+      serviceId,
+      centerId,
+      userId,
+      body.attributes || [],
+    );
+  }
+
+  // ---------------------------------------------
+  // PATIENT QUEUE
+  // ---------------------------------------------
   @Get('queue')
   @RequirePermissions('diagnostics:reports:read')
   async getDiagnosticsQueue(
@@ -45,6 +129,9 @@ export class DiagnosticsController {
     return this.diagnosticsService.completeQueueItem(itemId, centerId);
   }
 
+  // ---------------------------------------------
+  // DIAGNOSTIC REPORTS
+  // ---------------------------------------------
   @Get('reports')
   @RequirePermissions('diagnostics:reports:read')
   async getReports(

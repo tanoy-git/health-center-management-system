@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/api';
+import { toast } from '@/components/Toast';
 import {
   Pill,
   Plus,
@@ -141,9 +142,11 @@ export default function MedicinesPage() {
         body: JSON.stringify(formData),
       });
       setCreateModalOpen(false);
+      toast.success('Medicine registered successfully');
       loadMedicines();
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to register medicine');
+      toast.error(err.message || 'Failed to register medicine');
     } finally {
       setSubmitting(false);
     }
@@ -160,9 +163,11 @@ export default function MedicinesPage() {
         body: JSON.stringify(formData),
       });
       setEditModalOpen(false);
+      toast.success('Medicine updated successfully');
       loadMedicines();
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to update medicine');
+      toast.error(err.message || 'Failed to update medicine');
     } finally {
       setSubmitting(false);
     }
@@ -176,9 +181,10 @@ export default function MedicinesPage() {
         method: 'DELETE',
       });
       setDeleteModalOpen(false);
+      toast.success('Medicine deleted successfully');
       loadMedicines();
     } catch (err: any) {
-      alert(err.message || 'Failed to delete medicine');
+      toast.error(err.message || 'Failed to delete medicine');
     } finally {
       setSubmitting(false);
     }

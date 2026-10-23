@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/api';
+import { toast } from '@/components/Toast';
 import ThermalReceiptModal from '@/components/ThermalReceiptModal';
 import A4InvoiceModal from '@/components/A4InvoiceModal';
 import {
@@ -248,11 +249,11 @@ export default function PosBillingPage() {
 
   const handleCheckout = async () => {
     if (!selectedPatientId) {
-      alert('Please select a registered patient');
+      toast.warning('Please select a registered patient');
       return;
     }
     if (cart.length === 0) {
-      alert('Cart is empty. Please add billable services.');
+      toast.warning('Cart is empty. Please add billable services.');
       return;
     }
 
@@ -293,10 +294,11 @@ export default function PosBillingPage() {
       setDiscountPercent(0);
       setNotes('');
 
+      toast.success(`Invoice #${invoice.invoice_number} created successfully`);
       // Open A4 invoice modal by default
       setA4ModalOpen(true);
     } catch (err: any) {
-      alert(err.message || 'Invoice checkout failed');
+      toast.error(err.message || 'Invoice checkout failed');
     } finally {
       setSubmitting(false);
     }

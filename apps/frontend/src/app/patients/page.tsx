@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/api';
+import { toast } from '@/components/Toast';
 import {
   Users,
   Search,
@@ -38,7 +39,6 @@ export default function PatientsPage() {
   const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [marketingOfficers, setMarketingOfficers] = useState<any[]>([]);
 
   // Edit State
@@ -102,7 +102,7 @@ export default function PatientsPage() {
       const data = await apiRequest(`/patients/${id}`);
       setSelectedPatient(data);
     } catch (err: any) {
-      alert(err.message || 'Error loading patient details');
+      toast.error(err.message || 'Error loading patient details');
     }
   };
 
@@ -115,7 +115,7 @@ export default function PatientsPage() {
         body: JSON.stringify(formData),
       });
 
-      setToastMessage(`Patient successfully registered with ${res.uhid}`);
+      toast.success(`Patient successfully registered with UHID: ${res.uhid}`);
       setIsRegisterModalOpen(false);
       setFormData({
         firstName: '',
@@ -130,9 +130,8 @@ export default function PatientsPage() {
         referredById: '',
       });
       loadPatients();
-      setTimeout(() => setToastMessage(null), 5000);
     } catch (err: any) {
-      alert(err.message || 'Registration failed');
+      toast.error(err.message || 'Registration failed');
     } finally {
       setSubmitting(false);
     }
@@ -166,16 +165,15 @@ export default function PatientsPage() {
         body: JSON.stringify(editFormData),
       });
 
-      setToastMessage(`Patient ${res.uhid} (${res.first_name} ${res.last_name}) updated successfully`);
+      toast.success(`Patient ${res.uhid} (${res.first_name} ${res.last_name}) updated successfully`);
       setIsEditModalOpen(false);
       setEditingPatient(null);
       loadPatients();
       if (selectedPatient?.id === editingPatient.id) {
         handleSelectPatient(editingPatient.id);
       }
-      setTimeout(() => setToastMessage(null), 5000);
     } catch (err: any) {
-      alert(err.message || 'Update failed');
+      toast.error(err.message || 'Update failed');
     } finally {
       setSubmitting(false);
     }
@@ -192,13 +190,6 @@ export default function PatientsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Toast Alert */}
-      {toastMessage && (
-        <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-4 text-xs font-semibold text-emerald-600 dark:text-emerald-400 shadow-sm animate-in fade-in">
-          <CheckCircle className="h-4 w-4 shrink-0" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
 
       {/* Top Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

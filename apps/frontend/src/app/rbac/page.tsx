@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/api';
+import { toast } from '@/components/Toast';
 import {
   ShieldCheck,
   Plus,
@@ -22,7 +23,6 @@ export default function RbacPage() {
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
 
   // New Role Modal
   const [isNewRoleModalOpen, setIsNewRoleModalOpen] = useState(false);
@@ -82,11 +82,10 @@ export default function RbacPage() {
         }),
       });
 
-      setToast(`Permissions updated dynamically for ${selectedRole.name}`);
-      setTimeout(() => setToast(null), 4000);
+      toast.success(`Permissions updated dynamically for ${selectedRole.name}`);
       loadRbacData();
     } catch (err: any) {
-      alert(err.message || 'Failed to update role permissions');
+      toast.error(err.message || 'Failed to update role permissions');
     } finally {
       setSaving(false);
     }
@@ -109,8 +108,9 @@ export default function RbacPage() {
       setNewRoleDesc('');
       await loadRbacData();
       selectRole(created);
+      toast.success(`Role "${newRoleName}" created successfully`);
     } catch (err: any) {
-      alert(err.message || 'Failed to create role');
+      toast.error(err.message || 'Failed to create role');
     }
   };
 
@@ -124,13 +124,6 @@ export default function RbacPage() {
 
   return (
     <div className="space-y-6">
-      {/* Toast */}
-      {toast && (
-        <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-4 text-xs font-semibold text-emerald-600 dark:text-emerald-400 shadow-sm animate-in fade-in">
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>{toast}</span>
-        </div>
-      )}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

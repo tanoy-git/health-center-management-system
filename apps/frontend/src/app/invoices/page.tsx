@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/api';
+import { toast } from '@/components/Toast';
 import DateRangeFilter, {
   DateFilterValue,
   getDefaultDateFilter,
@@ -110,7 +111,7 @@ export default function InvoicesPage() {
       setSelectedInvoice(full);
       setA4ModalOpen(true);
     } catch (e: any) {
-      alert(e.message || 'Error opening invoice');
+      toast.error(e.message || 'Error opening invoice');
     }
   };
 
@@ -120,7 +121,7 @@ export default function InvoicesPage() {
       setThermalData(data);
       setThermalModalOpen(true);
     } catch (e: any) {
-      alert(e.message || 'Error loading thermal receipt');
+      toast.error(e.message || 'Error loading thermal receipt');
     }
   };
 
@@ -131,7 +132,7 @@ export default function InvoicesPage() {
       setSelectedInvoice(full);
       setAuditLogsModalOpen(true);
     } catch (e: any) {
-      alert(e.message || 'Error loading audit logs');
+      toast.error(e.message || 'Error loading audit logs');
     }
   };
 
@@ -141,7 +142,7 @@ export default function InvoicesPage() {
     const ageInDays = ageInMs / (1000 * 60 * 60 * 24);
 
     if (ageInDays > 3) {
-      alert('Invoice editing policy: Invoices can only be edited within 3 days of purchase.');
+      toast.warning('Invoice editing policy: Invoices can only be edited within 3 days of purchase.');
       return;
     }
 
@@ -169,7 +170,7 @@ export default function InvoicesPage() {
       setEditError(null);
       setEditModalOpen(true);
     } catch (err: any) {
-      alert(err.message || 'Failed to load invoice items for editing');
+      toast.error(err.message || 'Failed to load invoice items for editing');
     }
   };
 
@@ -207,7 +208,7 @@ export default function InvoicesPage() {
   const handleRemoveItem = (index: number) => {
     setEditForm((prev) => {
       if (!prev.items[index].is_queued) {
-        alert('Cannot remove this service: Clinical final submission has already occurred.');
+        toast.warning('Cannot remove this service: Clinical final submission has already occurred.');
         return prev;
       }
       return {
@@ -255,9 +256,11 @@ export default function InvoicesPage() {
 
       setEditModalOpen(false);
       setEditingInvoice(null);
+      toast.success(`Invoice #${editingInvoice.invoice_number} updated successfully`);
       loadInvoices();
     } catch (err: any) {
       setEditError(err.message || 'Failed to update invoice');
+      toast.error(err.message || 'Failed to update invoice');
     } finally {
       setEditSubmitting(false);
     }

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/api';
+import { toast } from '@/components/Toast';
 import {
   Briefcase,
   Clock,
@@ -111,9 +112,10 @@ export default function HrPage() {
         method: 'POST',
         body: JSON.stringify({ monthYear }),
       });
+      toast.success(`Payroll for ${monthYear} generated successfully`);
       loadData();
     } catch (err: any) {
-      alert(err.message || 'Failed to generate payroll');
+      toast.error(err.message || 'Failed to generate payroll');
     }
   };
 
@@ -122,9 +124,10 @@ export default function HrPage() {
       await apiRequest(`/hr/payroll/${payrollId}/pay`, {
         method: 'PATCH',
       });
+      toast.success('Payroll record marked as paid');
       loadData();
     } catch (err: any) {
-      alert(err.message || 'Failed to update payroll status');
+      toast.error(err.message || 'Failed to update payroll status');
     }
   };
 
@@ -147,9 +150,10 @@ export default function HrPage() {
         method: 'PATCH',
         body: JSON.stringify({ status: newStatus }),
       });
+      toast.success(`Employee ${emp.user?.first_name} ${emp.user?.last_name} set to ${newStatus}`);
       loadData();
     } catch (err: any) {
-      alert(err.message || `Failed to ${actionText} employee`);
+      toast.error(err.message || `Failed to ${actionText} employee`);
     }
   };
 
@@ -179,9 +183,10 @@ export default function HrPage() {
         body: JSON.stringify(editForm),
       });
       setEditModalOpen(false);
+      toast.success('Employee details updated successfully');
       loadData();
     } catch (err: any) {
-      alert(err.message || 'Failed to update employee details');
+      toast.error(err.message || 'Failed to update employee details');
     } finally {
       setEditSubmitting(false);
     }
@@ -210,6 +215,7 @@ export default function HrPage() {
         body: JSON.stringify({ newPassword: adminNewPassword }),
       });
       setResetSuccess(true);
+      toast.success(`Password reset successfully for ${targetEmployee.user?.first_name}`);
       setTimeout(() => {
         setResetModalOpen(false);
         setTargetEmployee(null);
@@ -232,9 +238,10 @@ export default function HrPage() {
         body: JSON.stringify(onboardForm),
       });
       setOnboardModalOpen(false);
+      toast.success('Employee onboarded successfully');
       loadData();
     } catch (err: any) {
-      alert(err.message || 'Failed to onboard employee');
+      toast.error(err.message || 'Failed to onboard employee');
     }
   };
 

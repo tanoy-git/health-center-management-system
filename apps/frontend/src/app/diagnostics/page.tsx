@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/api';
+import { toast } from '@/components/Toast';
 import {
   Activity,
   Plus,
@@ -152,9 +153,10 @@ export default function DiagnosticsPage() {
       await apiRequest(`/diagnostics/queue/${itemId}/complete`, {
         method: 'POST',
       });
+      toast.success('Queue item marked as completed');
       loadQueue();
     } catch (err: any) {
-      alert(err.message || 'Failed to complete queue item');
+      toast.error(err.message || 'Failed to complete queue item');
     }
   };
 
@@ -195,9 +197,10 @@ export default function DiagnosticsPage() {
       const data = await res.json();
       if (data.fileUrl) {
         setUploadedUrls([...uploadedUrls, data.fileUrl]);
+        toast.success('File uploaded successfully');
       }
     } catch (err: any) {
-      alert(err.message || 'Error uploading file to MinIO/Storage');
+      toast.error(err.message || 'Error uploading file to MinIO/Storage');
     } finally {
       setUploading(false);
     }
@@ -253,7 +256,7 @@ export default function DiagnosticsPage() {
         setUploadedUrls([]);
         loadReports();
         loadQueue();
-        alert('Diagnostic report updated successfully');
+        toast.success('Diagnostic report updated successfully');
       } else {
         await apiRequest('/diagnostics/reports', {
           method: 'POST',
@@ -274,11 +277,12 @@ export default function DiagnosticsPage() {
         setFindings('');
         setImpression('');
         setUploadedUrls([]);
+        toast.success('Diagnostic report created successfully');
         loadReports();
         loadQueue();
       }
     } catch (err: any) {
-      alert(err.message || 'Failed to process report');
+      toast.error(err.message || 'Failed to process report');
     } finally {
       setSubmitting(false);
     }
@@ -298,9 +302,10 @@ export default function DiagnosticsPage() {
       });
 
       setSignOffModalOpen(false);
+      toast.success('Report digitally signed and finalized');
       loadReports();
     } catch (err: any) {
-      alert(err.message || 'Sign-off failed');
+      toast.error(err.message || 'Sign-off failed');
     }
   };
 

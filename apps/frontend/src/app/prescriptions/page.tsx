@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/api';
+import { toast } from '@/components/Toast';
 import {
   Stethoscope,
   Plus,
@@ -184,7 +185,7 @@ export default function PrescriptionsPage() {
       link.click();
       link.parentNode?.removeChild(link);
     } catch (e: any) {
-      alert(e.message || 'Error generating prescription PDF');
+      toast.error(e.message || 'Error generating prescription PDF');
     }
   };
 
@@ -206,9 +207,10 @@ export default function PrescriptionsPage() {
     e.stopPropagation();
     try {
       await apiRequest(`/clinical/queue/${itemId}/complete`, { method: 'POST' });
+      toast.success('Queue item marked as completed');
       loadQueue();
     } catch (err: any) {
-      alert(err.message || 'Error updating queue item');
+      toast.error(err.message || 'Error updating queue item');
     }
   };
 
@@ -271,7 +273,7 @@ export default function PrescriptionsPage() {
   const handleCreatePrescription = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPatientId) {
-      alert('Please select a patient');
+      toast.warning('Please select a patient');
       return;
     }
     setSubmitting(true);
@@ -294,7 +296,7 @@ export default function PrescriptionsPage() {
         setActiveQueueItem(null);
         loadData();
         loadQueue();
-        alert('Prescription updated successfully');
+        toast.success('Prescription updated successfully');
       } else {
         const newRx = await apiRequest('/clinical/prescriptions', {
           method: 'POST',
@@ -315,11 +317,12 @@ export default function PrescriptionsPage() {
         loadData();
         loadQueue();
 
+        toast.success('Prescription created successfully');
         // Automatically trigger PDF download
         handleDownloadPdf(newRx.id, newRx.prescription_number);
       }
     } catch (err: any) {
-      alert(err.message || 'Failed to process prescription');
+      toast.error(err.message || 'Failed to process prescription');
     } finally {
       setSubmitting(false);
     }

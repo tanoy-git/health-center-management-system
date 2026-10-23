@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/api';
+import { toast } from '@/components/Toast';
 import {
   Eye,
   Plus,
@@ -358,7 +359,7 @@ export default function EyePrescriptionsPage() {
         link.parentNode?.removeChild(link);
       }
     } catch (err: any) {
-      alert(err.message || 'Failed to generate eye prescription PDF');
+      toast.error(err.message || 'Failed to generate eye prescription PDF');
     } finally {
       setDownloadingId(null);
     }
@@ -453,7 +454,7 @@ export default function EyePrescriptionsPage() {
         setExamModalOpen(false);
         setEditingEyeRx(null);
         loadData();
-        alert('Eye prescription updated successfully');
+        toast.success('Eye prescription updated successfully');
       } else {
         const res = await apiRequest('/clinical/prescriptions', {
           method: 'POST',
@@ -461,6 +462,7 @@ export default function EyePrescriptionsPage() {
         });
 
         setExamModalOpen(false);
+        toast.success('Eye prescription issued successfully');
         // Automatically trigger authenticated PDF preview/download
         if (res && res.id) {
           handleDownloadPdf(res.id, res.prescription_number);
@@ -469,6 +471,7 @@ export default function EyePrescriptionsPage() {
       }
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to issue eye prescription');
+      toast.error(err.message || 'Failed to issue eye prescription');
     } finally {
       setSubmitting(false);
     }

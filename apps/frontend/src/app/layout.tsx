@@ -5,6 +5,7 @@ import { AuthProvider } from '@/lib/auth-context';
 import { SidebarProvider } from '@/lib/sidebar-context';
 import Header from '@/components/Header';
 import Sidebar from '@/components/Sidebar';
+import { ToastProvider } from '@/components/Toast';
 
 export const metadata: Metadata = {
   title: 'Health Center Management System v2.0 | Clinical ERP',
@@ -43,15 +44,17 @@ export default function RootLayout({
         <ThemeProvider>
           <AuthProvider>
             <SidebarProvider>
-              <div className="min-h-screen flex flex-col">
-                <Header />
-                <div className="flex flex-1 relative">
-                  <Sidebar />
-                  <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto max-w-7xl mx-auto w-full min-w-0">
-                    {children}
-                  </main>
+              <ToastProvider>
+                <div className="min-h-screen flex flex-col">
+                  <Header />
+                  <div className="flex flex-1 relative">
+                    <Sidebar />
+                    <main className="flex-1 p-3 sm:p-5 md:p-6 overflow-y-auto max-w-7xl mx-auto w-full min-w-0">
+                      {children}
+                    </main>
+                  </div>
                 </div>
-              </div>
+              </ToastProvider>
             </SidebarProvider>
           </AuthProvider>
         </ThemeProvider>

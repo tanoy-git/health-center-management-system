@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/api';
+import { toast } from '@/components/Toast';
 import {
   Layers,
   Tag,
@@ -90,8 +91,7 @@ export default function ServicesAndCampaignsPage() {
   }, [activeCenter]);
 
   const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 4000);
+    toast.success(msg);
   };
 
   const loadAllData = async () => {
@@ -147,7 +147,7 @@ export default function ServicesAndCampaignsPage() {
   const handleSaveService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!serviceForm.name.trim() || !serviceForm.price) {
-      alert('Service name and price are required');
+      toast.warning('Service name and price are required');
       return;
     }
     const matchedCategory = categories.find(c => c.id === serviceForm.categoryId);
@@ -186,7 +186,7 @@ export default function ServicesAndCampaignsPage() {
       setServiceModalOpen(false);
       loadAllData();
     } catch (err: any) {
-      alert(err.message || 'Failed to save service');
+      toast.error(err.message || 'Failed to save service');
     } finally {
       setSubmitting(false);
     }
@@ -202,7 +202,7 @@ export default function ServicesAndCampaignsPage() {
       showToast(`Service "${srv.name}" set to ${nextStatus}`);
       loadAllData();
     } catch (err: any) {
-      alert(err.message || 'Failed to update service status');
+      toast.error(err.message || 'Failed to update service status');
     }
   };
 
@@ -213,7 +213,7 @@ export default function ServicesAndCampaignsPage() {
       showToast(`Service "${srv.name}" deleted`);
       loadAllData();
     } catch (err: any) {
-      alert(err.message || 'Failed to delete service');
+      toast.error(err.message || 'Failed to delete service');
     }
   };
 
@@ -245,7 +245,7 @@ export default function ServicesAndCampaignsPage() {
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!categoryForm.name.trim()) {
-      alert('Category name is required');
+      toast.warning('Category name is required');
       return;
     }
     setSubmitting(true);
@@ -275,7 +275,7 @@ export default function ServicesAndCampaignsPage() {
       setCategoryModalOpen(false);
       loadAllData();
     } catch (err: any) {
-      alert(err.message || 'Failed to save category');
+      toast.error(err.message || 'Failed to save category');
     } finally {
       setSubmitting(false);
     }
@@ -291,7 +291,7 @@ export default function ServicesAndCampaignsPage() {
       showToast(`Category "${cat.name}" marked ${nextStatus}`);
       loadAllData();
     } catch (err: any) {
-      alert(err.message || 'Failed to update category status');
+      toast.error(err.message || 'Failed to update category status');
     }
   };
 
@@ -343,7 +343,7 @@ export default function ServicesAndCampaignsPage() {
   const handleSaveCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!campaignForm.name.trim() || !campaignForm.discountValue) {
-      alert('Campaign name and discount value are required');
+      toast.warning('Campaign name and discount value are required');
       return;
     }
     setSubmitting(true);
@@ -381,7 +381,7 @@ export default function ServicesAndCampaignsPage() {
       setCampaignModalOpen(false);
       loadAllData();
     } catch (err: any) {
-      alert(err.message || 'Failed to save discount campaign');
+      toast.error(err.message || 'Failed to save discount campaign');
     } finally {
       setSubmitting(false);
     }
@@ -397,7 +397,7 @@ export default function ServicesAndCampaignsPage() {
       showToast(`Campaign "${camp.name}" is now ${nextStatus}`);
       loadAllData();
     } catch (err: any) {
-      alert(err.message || 'Failed to update campaign status');
+      toast.error(err.message || 'Failed to update campaign status');
     }
   };
 
@@ -408,7 +408,7 @@ export default function ServicesAndCampaignsPage() {
       showToast(`Campaign "${camp.name}" deleted`);
       loadAllData();
     } catch (err: any) {
-      alert(err.message || 'Failed to delete campaign');
+      toast.error(err.message || 'Failed to delete campaign');
     }
   };
 

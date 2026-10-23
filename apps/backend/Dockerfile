@@ -40,9 +40,10 @@ ENV PORT=4000
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/package*.json ./
 
 EXPOSE 4000
 
-# Run database schema synchronization and start production server
-CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/src/main.js"]
+# Run database schema synchronization, conditional dummy data push, and start production server
+CMD ["node", "scripts/start-prod.js"]

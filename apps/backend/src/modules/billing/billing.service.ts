@@ -205,15 +205,14 @@ export class BillingService {
   }
 
   // ---------------------------------------------
-  // SERVICE CATALOG
+  // SERVICE CATALOG (GLOBAL)
   // ---------------------------------------------
   async getServices(
-    centerId: string,
     category?: string,
     search?: string,
     status?: string,
   ) {
-    const where: any = { center_id: centerId, deleted_at: null };
+    const where: any = { deleted_at: null };
     if (status && status !== 'ALL') {
       where.status = status;
     } else if (!status) {
@@ -237,15 +236,10 @@ export class BillingService {
     });
   }
 
-  async createService(centerId: string, dto: CreateServiceCatalogDto, userId?: string) {
+  async createService(dto: CreateServiceCatalogDto, userId?: string) {
     const code = dto.code.toUpperCase().trim();
     const existing = await this.prisma.serviceCatalog.findUnique({
-      where: {
-        center_id_code: {
-          center_id: centerId,
-          code,
-        },
-      },
+      where: { code },
     });
 
     if (existing) {
@@ -254,7 +248,6 @@ export class BillingService {
 
     return this.prisma.serviceCatalog.create({
       data: {
-        center_id: centerId,
         code,
         name: dto.name.trim(),
         category: dto.category.trim(),
@@ -270,20 +263,28 @@ export class BillingService {
 
   async updateService(
     id: string,
-    centerId: string,
     dto: UpdateServiceCatalogDto,
     userId?: string,
   ) {
     const existing = await this.prisma.serviceCatalog.findFirst({
-      where: { id, center_id: centerId },
+      where: { id, deleted_at: null },
     });
     if (!existing) {
-      throw new NotFoundException('Service not found at this center');
+      throw new NotFoundException('Service not found');
     }
 
     const data: any = { updated_by: userId };
     if (dto.name !== undefined) data.name = dto.name.trim();
-    if (dto.code !== undefined) data.code = dto.code.toUpperCase().trim();
+    if (dto.code !== undefined) {
+      const code = dto.code.toUpperCase().trim();
+      if (code !== existing.code) {
+        const dup = await this.prisma.serviceCatalog.findUnique({ where: { code } });
+        if (dup) {
+          throw new BadRequestException(`Service code ${dto.code} already exists`);
+        }
+      }
+      data.code = code;
+    }
     if (dto.category !== undefined) data.category = dto.category.trim();
     if (dto.categoryId !== undefined) data.category_id = dto.categoryId || null;
     if (dto.price !== undefined) data.price = new Prisma.Decimal(dto.price);
@@ -297,12 +298,12 @@ export class BillingService {
     });
   }
 
-  async deleteService(id: string, centerId: string, userId?: string) {
+  async deleteService(id: string, userId?: string) {
     const existing = await this.prisma.serviceCatalog.findFirst({
-      where: { id, center_id: centerId },
+      where: { id },
     });
     if (!existing) {
-      throw new NotFoundException('Service not found at this center');
+      throw new NotFoundException('Service not found');
     }
 
     return this.prisma.serviceCatalog.update({

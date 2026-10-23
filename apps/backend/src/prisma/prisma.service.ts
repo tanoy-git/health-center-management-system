@@ -13,7 +13,6 @@ const TENANT_SCOPED_MODELS = [
   'Attendance',
   'Payroll',
   'Patient',
-  'ServiceCatalog',
   'Invoice',
   'InvoiceItem',
   'InvoiceAuditLog',

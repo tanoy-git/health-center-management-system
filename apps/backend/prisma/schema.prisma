@@ -34,7 +34,6 @@ model Center {
   attendances         Attendance[]
   payrolls            Payroll[]
   patients            Patient[]
-  services            ServiceCatalog[]
   invoices            Invoice[]
   invoice_items       InvoiceItem[]
   invoice_audit_logs  InvoiceAuditLog[]
@@ -42,7 +41,6 @@ model Center {
   prescriptions       Prescription[]
   prescription_items  PrescriptionItem[]
   diagnostic_reports  DiagnosticReport[]
-  service_categories  ServiceCategory[]
   discount_campaigns  DiscountCampaign[]
   referral_commission_rules ReferralCommissionRule[]
   referral_commissions      ReferralCommission[]
@@ -262,7 +260,6 @@ model Patient {
 // ----------------------------------------------------
 model ServiceCategory {
   id          String    @id @default(uuid())
-  center_id   String?
   code        String    @unique // e.g. USG, PROCEDURE, LAB_TEST, CONSULTATION, EYE
   name        String    // e.g. "Ultrasonography (USG)", "General Consultation"
   description String?
@@ -275,8 +272,7 @@ model ServiceCategory {
   created_by  String?
   updated_by  String?
 
-  center      Center?            @relation(fields: [center_id], references: [id])
-  services    ServiceCatalog[]
+  services           ServiceCatalog[]
   campaigns          DiscountCampaign[]
   commission_rules   ReferralCommissionRule[]
 
@@ -285,8 +281,7 @@ model ServiceCategory {
 
 model ServiceCatalog {
   id          String   @id @default(uuid())
-  center_id   String
-  code        String
+  code        String   @unique
   name        String
   category    String   // CONSULTATION, LAB_TEST, USG, RADIOLOGY, PROCEDURE, EYE
   category_id String?
@@ -301,7 +296,6 @@ model ServiceCatalog {
   created_by  String?
   updated_by  String?
 
-  center             Center             @relation(fields: [center_id], references: [id])
   category_rel       ServiceCategory?   @relation(fields: [category_id], references: [id])
   invoice_items      InvoiceItem[]
   discount_campaigns DiscountCampaign[]
@@ -309,7 +303,6 @@ model ServiceCatalog {
   attributes         ServiceTestAttribute[]
   diagnostic_reports DiagnosticReport[]
 
-  @@unique([center_id, code])
   @@map("service_catalog")
 }
 

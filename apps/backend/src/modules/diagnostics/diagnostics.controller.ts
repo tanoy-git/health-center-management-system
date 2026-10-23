@@ -36,32 +36,28 @@ export class DiagnosticsController {
   @Get('services')
   @RequirePermissions('diagnostics:reports:read')
   async getDiagnosticServices(
-    @CurrentTenant() centerId: string,
     @Query('search') search?: string,
   ) {
-    return this.diagnosticsService.getDiagnosticServices(centerId, search);
+    return this.diagnosticsService.getDiagnosticServices(search);
   }
 
   @Get('services/:serviceId/attributes')
   @RequirePermissions('diagnostics:reports:read')
   async getServiceAttributes(
     @Param('serviceId') serviceId: string,
-    @CurrentTenant() centerId: string,
   ) {
-    return this.diagnosticsService.getServiceAttributes(serviceId, centerId);
+    return this.diagnosticsService.getServiceAttributes(serviceId);
   }
 
   @Post('services/:serviceId/attributes')
   @RequirePermissions('diagnostics:reports:write')
   async createServiceAttribute(
     @Param('serviceId') serviceId: string,
-    @CurrentTenant() centerId: string,
     @CurrentUser('id') userId: string,
     @Body() body: CreateServiceTestAttributeDto,
   ) {
     return this.diagnosticsService.createServiceAttribute(
       serviceId,
-      centerId,
       userId,
       body,
     );
@@ -71,13 +67,11 @@ export class DiagnosticsController {
   @RequirePermissions('diagnostics:reports:write')
   async updateServiceAttribute(
     @Param('id') id: string,
-    @CurrentTenant() centerId: string,
     @CurrentUser('id') userId: string,
     @Body() body: UpdateServiceTestAttributeDto,
   ) {
     return this.diagnosticsService.updateServiceAttribute(
       id,
-      centerId,
       userId,
       body,
     );
@@ -87,22 +81,19 @@ export class DiagnosticsController {
   @RequirePermissions('diagnostics:reports:write')
   async deleteServiceAttribute(
     @Param('id') id: string,
-    @CurrentTenant() centerId: string,
   ) {
-    return this.diagnosticsService.deleteServiceAttribute(id, centerId);
+    return this.diagnosticsService.deleteServiceAttribute(id);
   }
 
   @Post('services/:serviceId/attributes/batch')
   @RequirePermissions('diagnostics:reports:write')
   async batchSaveServiceAttributes(
     @Param('serviceId') serviceId: string,
-    @CurrentTenant() centerId: string,
     @CurrentUser('id') userId: string,
     @Body() body: { attributes: CreateServiceTestAttributeDto[] },
   ) {
     return this.diagnosticsService.batchSaveServiceAttributes(
       serviceId,
-      centerId,
       userId,
       body.attributes || [],
     );

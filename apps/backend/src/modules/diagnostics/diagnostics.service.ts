@@ -452,11 +452,11 @@ export class DiagnosticsService {
   }
 
   // ---------------------------------------------
-  // SERVICE TEST ATTRIBUTES (MASTER-DETAILS)
   // ---------------------------------------------
-  async getDiagnosticServices(centerId: string, search?: string) {
+  // SERVICE TEST ATTRIBUTES (MASTER-DETAILS, GLOBAL)
+  // ---------------------------------------------
+  async getDiagnosticServices(search?: string) {
     const where: any = {
-      center_id: centerId,
       deleted_at: null,
       status: 'ACTIVE',
     };
@@ -484,12 +484,12 @@ export class DiagnosticsService {
     });
   }
 
-  async getServiceAttributes(serviceId: string, centerId: string) {
+  async getServiceAttributes(serviceId: string) {
     const service = await this.prisma.serviceCatalog.findFirst({
-      where: { id: serviceId, center_id: centerId, deleted_at: null },
+      where: { id: serviceId, deleted_at: null },
     });
     if (!service) {
-      throw new NotFoundException('Service not found or inaccessible for this center');
+      throw new NotFoundException('Service not found');
     }
 
     return this.prisma.serviceTestAttribute.findMany({
@@ -503,12 +503,11 @@ export class DiagnosticsService {
 
   async createServiceAttribute(
     serviceId: string,
-    centerId: string,
     userId: string,
     dto: CreateServiceTestAttributeDto,
   ) {
     const service = await this.prisma.serviceCatalog.findFirst({
-      where: { id: serviceId, center_id: centerId, deleted_at: null },
+      where: { id: serviceId, deleted_at: null },
     });
     if (!service) {
       throw new NotFoundException('Service not found');
@@ -534,15 +533,13 @@ export class DiagnosticsService {
 
   async updateServiceAttribute(
     attributeId: string,
-    centerId: string,
     userId: string,
     dto: UpdateServiceTestAttributeDto,
   ) {
     const attribute = await this.prisma.serviceTestAttribute.findFirst({
       where: { id: attributeId, deleted_at: null },
-      include: { service: true },
     });
-    if (!attribute || attribute.service.center_id !== centerId) {
+    if (!attribute) {
       throw new NotFoundException('Attribute not found');
     }
 
@@ -563,12 +560,11 @@ export class DiagnosticsService {
     });
   }
 
-  async deleteServiceAttribute(attributeId: string, centerId: string) {
+  async deleteServiceAttribute(attributeId: string) {
     const attribute = await this.prisma.serviceTestAttribute.findFirst({
       where: { id: attributeId, deleted_at: null },
-      include: { service: true },
     });
-    if (!attribute || attribute.service.center_id !== centerId) {
+    if (!attribute) {
       throw new NotFoundException('Attribute not found');
     }
 
@@ -583,12 +579,11 @@ export class DiagnosticsService {
 
   async batchSaveServiceAttributes(
     serviceId: string,
-    centerId: string,
     userId: string,
     attributes: CreateServiceTestAttributeDto[],
   ) {
     const service = await this.prisma.serviceCatalog.findFirst({
-      where: { id: serviceId, center_id: centerId, deleted_at: null },
+      where: { id: serviceId, deleted_at: null },
     });
     if (!service) {
       throw new NotFoundException('Service not found');
@@ -617,6 +612,6 @@ export class DiagnosticsService {
       });
     }
 
-    return this.getServiceAttributes(serviceId, centerId);
+    return this.getServiceAttributes(serviceId);
   }
 }

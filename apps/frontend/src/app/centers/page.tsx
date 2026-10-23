@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export default function CentersPage() {
-  const { hasPermission, switchCenter, activeCenter } = useAuth();
+  const { hasPermission, switchCenter, activeCenter, reloadCenters } = useAuth();
   const [centers, setCenters] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -94,6 +94,7 @@ export default function CentersPage() {
       }
       setIsModalOpen(false);
       loadCenters();
+      if (reloadCenters) reloadCenters();
     } catch (err: any) {
       toast.error(err.message || 'Operation failed');
     }
@@ -106,6 +107,7 @@ export default function CentersPage() {
       await apiRequest(`/centers/${id}`, { method: 'DELETE' });
       toast.success(`Center "${name}" deleted successfully`);
       loadCenters();
+      if (reloadCenters) reloadCenters();
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete center');
     }

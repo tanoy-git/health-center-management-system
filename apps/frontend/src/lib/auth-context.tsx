@@ -47,6 +47,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   switchCenter: (center: Center) => void;
   hasPermission: (perm: string) => boolean;
+  reloadCenters: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -60,6 +61,7 @@ const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
   switchCenter: () => {},
   hasPermission: () => false,
+  reloadCenters: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -213,6 +215,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return user.permissions.includes(perm);
   };
 
+  const reloadCenters = async () => {
+    try {
+      const centers = await apiRequest<Center[]>('/centers');
+      if (Array.isArray(centers) && centers.length > 0) {
+        setAvailableCenters(centers);
+      }
+    } catch {}
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -226,6 +237,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         switchCenter,
         hasPermission,
+        reloadCenters,
       }}
     >
       {children}

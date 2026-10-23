@@ -29,6 +29,9 @@ services:
           type: keyvalue
           name: aegis-redis
           property: connectionString
+      # Controls whether dummy data & default seeds are pushed on deploy (set to "false" to disable manually)
+      - key: SEED_DUMMY_DATA
+        value: "true"
 
   # 2. Your Next.js Frontend
   - type: web

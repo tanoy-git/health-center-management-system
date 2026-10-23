@@ -417,34 +417,27 @@ async function main() {
     { code: 'SRV-EYE-03', name: 'Slit Lamp Biomicroscopy & Retinal Exam', category: 'EYE', price: 90.0, tax_rate: 0 },
   ];
 
-  for (const center of [centerA, centerB]) {
-    for (const s of sampleServices) {
-      await prisma.serviceCatalog.upsert({
-        where: {
-          center_id_code: {
-            center_id: center.id,
-            code: s.code,
-          },
-        },
-        update: {
-          name: s.name,
-          category: s.category,
-          category_id: categoryMap.get(s.category),
-          price: s.price,
-          tax_rate: s.tax_rate,
-        },
-        create: {
-          center_id: center.id,
-          code: s.code,
-          name: s.name,
-          category: s.category,
-          category_id: categoryMap.get(s.category),
-          price: s.price,
-          tax_rate: s.tax_rate,
-          status: 'ACTIVE',
-        },
-      });
-    }
+  // 5.1 Seed Global Services Catalog
+  for (const s of sampleServices) {
+    await prisma.serviceCatalog.upsert({
+      where: { code: s.code },
+      update: {
+        name: s.name,
+        category: s.category,
+        category_id: categoryMap.get(s.category),
+        price: s.price,
+        tax_rate: s.tax_rate,
+      },
+      create: {
+        code: s.code,
+        name: s.name,
+        category: s.category,
+        category_id: categoryMap.get(s.category),
+        price: s.price,
+        tax_rate: s.tax_rate,
+        status: 'ACTIVE',
+      },
+    });
   }
 
   // 5.2 Seed Sample Discount Campaign (60+ Male Patient Discount)

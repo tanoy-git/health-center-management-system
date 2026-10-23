@@ -27,7 +27,11 @@ export default function Header() {
 
   if (!user) return null;
 
-  const isSuperAdmin = user.role === 'SUPER_ADMIN';
+  const isSuperAdmin =
+    user.role === 'SUPER_ADMIN' ||
+    (typeof user.role === 'object' && (user.role as any)?.name === 'SUPER_ADMIN') ||
+    user.permissions?.includes('*') ||
+    user.permissions?.includes('center:manage');
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/75">

@@ -72,48 +72,44 @@ export class BillingController {
   }
 
   // ---------------------------------------------
-  // SERVICE CATALOG
+  // SERVICE CATALOG (GLOBAL)
   // ---------------------------------------------
   @Get('services')
   @RequirePermissions('billing:pos:access')
   async getServices(
-    @CurrentTenant() centerId: string,
     @Query('category') category?: string,
     @Query('search') search?: string,
     @Query('status') status?: string,
   ) {
-    return this.billingService.getServices(centerId, category, search, status);
+    return this.billingService.getServices(category, search, status);
   }
 
   @Post('services')
   @RequirePermissions('billing:services:manage')
   async createService(
-    @CurrentTenant() centerId: string,
     @Body() body: CreateServiceCatalogDto,
     @CurrentUser('id') userId: string,
   ) {
-    return this.billingService.createService(centerId, body, userId);
+    return this.billingService.createService(body, userId);
   }
 
   @Put('services/:id')
   @RequirePermissions('billing:services:manage')
   async updateService(
     @Param('id') id: string,
-    @CurrentTenant() centerId: string,
     @Body() body: UpdateServiceCatalogDto,
     @CurrentUser('id') userId: string,
   ) {
-    return this.billingService.updateService(id, centerId, body, userId);
+    return this.billingService.updateService(id, body, userId);
   }
 
   @Delete('services/:id')
   @RequirePermissions('billing:services:manage')
   async deleteService(
     @Param('id') id: string,
-    @CurrentTenant() centerId: string,
     @CurrentUser('id') userId: string,
   ) {
-    return this.billingService.deleteService(id, centerId, userId);
+    return this.billingService.deleteService(id, userId);
   }
 
   // ---------------------------------------------

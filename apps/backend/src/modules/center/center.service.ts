@@ -32,6 +32,7 @@ export class CenterService {
 
   async findAll() {
     return this.prisma.center.findMany({
+      where: { deleted_at: null },
       orderBy: { created_at: 'asc' },
       include: {
         _count: {

@@ -10,7 +10,7 @@ console.log('=======================================================');
 try {
   // 1. Push schema changes (DDL) to the database
   console.log('-> [1/3] Synchronizing PostgreSQL database schema (DDL)...');
-  execSync('npx prisma db push --skip-generate', {
+  execSync('npx prisma db push --skip-generate --accept-data-loss', {
     cwd: backendDir,
     stdio: 'inherit',
     env: process.env,

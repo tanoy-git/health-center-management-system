@@ -37,6 +37,7 @@ export default function LoginPage() {
   // Initial setup form state (only used when userCount === 0)
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [setupUserName, setSetupUserName] = useState('');
   const [setupEmail, setSetupEmail] = useState('');
   const [setupPassword, setSetupPassword] = useState('');
   const [setupConfirmPassword, setSetupConfirmPassword] = useState('');
@@ -81,6 +82,11 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
 
+    if (!setupUserName.trim()) {
+      setError('Username is required.');
+      return;
+    }
+
     if (setupPassword !== setupConfirmPassword) {
       setError('Passwords do not match. Please verify.');
       return;
@@ -96,7 +102,8 @@ export default function LoginPage() {
       await initialSetup({
         firstName,
         lastName,
-        email: setupEmail,
+        userName: setupUserName.trim().toLowerCase(),
+        email: setupEmail.trim() || undefined,
         password: setupPassword,
         phone,
         centerName,
@@ -168,7 +175,7 @@ export default function LoginPage() {
             <form onSubmit={handleSetupSubmit} className="space-y-3.5">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-foreground">First Name</label>
+                  <label className="text-[11px] font-medium text-foreground">First Name *</label>
                   <input
                     type="text"
                     required
@@ -179,7 +186,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-foreground">Last Name</label>
+                  <label className="text-[11px] font-medium text-foreground">Last Name *</label>
                   <input
                     type="text"
                     required
@@ -192,22 +199,36 @@ export default function LoginPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-foreground">Super Admin Email</label>
+                <label className="text-[11px] font-medium text-foreground">Username (userName) *</label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <input
-                    type="email"
+                    type="text"
                     required
-                    value={setupEmail}
-                    onChange={(e) => setSetupEmail(e.target.value)}
-                    placeholder="admin@yourhospital.com"
+                    value={setupUserName}
+                    onChange={(e) => setSetupUserName(e.target.value)}
+                    placeholder="e.g. superadmin or alexander"
                     className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-foreground">Primary Healthcare Center Name</label>
+                <label className="text-[11px] font-medium text-foreground">Super Admin Email (Optional)</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="email"
+                    value={setupEmail}
+                    onChange={(e) => setSetupEmail(e.target.value)}
+                    placeholder="admin@yourhospital.com (optional)"
+                    className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-foreground">Primary Healthcare Center Name *</label>
                 <div className="relative">
                   <Building2 className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <input
@@ -234,7 +255,7 @@ export default function LoginPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-foreground">Password</label>
+                  <label className="text-[11px] font-medium text-foreground">Password *</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                     <input
@@ -249,7 +270,7 @@ export default function LoginPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-foreground">Confirm Password</label>
+                  <label className="text-[11px] font-medium text-foreground">Confirm Password *</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                     <input

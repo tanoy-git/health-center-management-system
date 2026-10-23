@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
 
 export class InitialSetupDto {
   @IsString()
@@ -13,8 +13,9 @@ export class InitialSetupDto {
   @IsOptional()
   userName?: string;
 
-  @IsEmail()
   @IsOptional()
+  @ValidateIf((o) => !!o.email)
+  @IsEmail()
   email?: string;
 
   @IsString()

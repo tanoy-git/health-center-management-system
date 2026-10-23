@@ -1033,7 +1033,7 @@ export default function DiagnosticsPage() {
                 </div>
               </div>
 
-              {/* Relational Diagnostic Service Master Selector */}
+              {/* Relational Diagnostic Service Master (Read-only) */}
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <label className="font-semibold text-foreground flex items-center gap-1.5">
@@ -1047,31 +1047,29 @@ export default function DiagnosticsPage() {
                     </span>
                   )}
                 </div>
-                <select
-                  value={selectedServiceId}
-                  onChange={(e) => handleSelectService(e.target.value)}
-                  className="w-full rounded-lg border border-input bg-background p-2 font-medium outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">-- Select Diagnostic Service (Auto-fetches parameters) --</option>
-                  {diagnosticServices.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.code} - {s.name} {s.category ? `(${s.category.name})` : ''}
-                    </option>
-                  ))}
-                </select>
-                <p className="text-[10px] text-muted-foreground">
-                  Selecting a service automatically retrieves its relational test attributes, units, and normal reference ranges.
-                </p>
+                <input
+                  type="text"
+                  readOnly
+                  value={
+                    (() => {
+                      const svc = diagnosticServices.find((s) => s.id === selectedServiceId);
+                      if (svc) {
+                        return `${svc.code ? `${svc.code} - ` : ''}${svc.name}${svc.category ? ` (${svc.category.name})` : ''}`;
+                      }
+                      return activeQueueItem?.item_name || testName || 'Diagnostic Service Master';
+                    })()
+                  }
+                  className="w-full rounded-lg border border-input bg-muted/60 p-2 font-medium text-foreground outline-none cursor-not-allowed select-none"
+                />
               </div>
 
               <div className="space-y-1">
                 <label className="font-semibold text-foreground">Test Name *</label>
                 <input
                   type="text"
-                  required
+                  readOnly
                   value={testName}
-                  onChange={(e) => setTestName(e.target.value)}
-                  className="w-full rounded-lg border border-input bg-background p-2 outline-none"
+                  className="w-full rounded-lg border border-input bg-muted/60 p-2 font-medium text-foreground outline-none cursor-not-allowed select-none"
                 />
               </div>
 

@@ -111,6 +111,15 @@ export default function LoginPage() {
       router.push('/');
     } catch (err: any) {
       setError(err.message || 'Initial setup failed. Please try again.');
+      if (
+        err.message?.includes('already been completed') ||
+        err.message?.includes('already provisioned') ||
+        err.message?.includes('database') ||
+        err.status === 400
+      ) {
+        // System is already provisioned, switch to sign-in form
+        setTimeout(() => setSetupRequired(false), 1500);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -302,6 +311,16 @@ export default function LoginPage() {
                   </>
                 )}
               </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSetupRequired(false)}
+                  className="text-xs text-blue-600 hover:text-blue-700 hover:underline font-medium"
+                >
+                  System already initialized? Switch to Sign In
+                </button>
+              </div>
             </form>
           </div>
         ) : (
@@ -390,6 +409,22 @@ export default function LoginPage() {
                   Quick Role Switcher (Preconfigured Demo)
                 </p>
                 <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleQuickLogin('tanoy', '123456')
+                    }
+                    className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 hover:bg-muted p-2 text-left transition-colors"
+                  >
+                    <Building2 className="h-4 w-4 text-blue-600 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold truncate">Tanoy (Super Admin)</p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        @tanoy (Primary)
+                      </p>
+                    </div>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() =>

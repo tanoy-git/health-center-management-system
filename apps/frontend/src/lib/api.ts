@@ -42,6 +42,14 @@ export async function apiRequest<T = any>(
   });
 
   if (response.status === 401) {
+    let errorMsg = 'Unauthorized session';
+    let data: any = null;
+    try {
+      data = await response.json();
+      errorMsg = data?.message || errorMsg;
+      if (Array.isArray(errorMsg)) errorMsg = errorMsg.join(', ');
+    } catch {}
+
     if (typeof window !== 'undefined') {
       localStorage.removeItem('aegis_token');
       localStorage.removeItem('aegis_user');
@@ -49,7 +57,7 @@ export async function apiRequest<T = any>(
         window.location.href = '/login';
       }
     }
-    throw new ApiError('Unauthorized session', 401);
+    throw new ApiError(errorMsg, 401, data);
   }
 
   const contentType = response.headers.get('content-type');

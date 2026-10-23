@@ -26,8 +26,13 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
+                  var initialized = localStorage.getItem('aegis_theme_init');
+                  if (!initialized) {
+                    localStorage.setItem('aegis_theme', 'light');
+                    localStorage.setItem('aegis_theme_init', 'true');
+                  }
                   var saved = localStorage.getItem('aegis_theme');
-                  if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                  if (saved === 'dark') {
                     document.documentElement.classList.add('dark');
                     document.documentElement.setAttribute('data-theme', 'dark');
                   } else {

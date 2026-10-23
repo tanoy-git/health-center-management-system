@@ -123,6 +123,7 @@ export interface UpdateInvoiceDto {
   discountPercent?: number;
   paymentMethod?: string;
   paymentStatus?: string;
+  paidAmount?: number;
   notes?: string;
   modificationReason: string;
   items?: UpdateInvoiceItemDto[];
@@ -868,8 +869,21 @@ export class BillingService {
     }
 
     const totalAmount = Math.max(0, subtotal - discountAmount);
-    const paidAmount = Number(existing.paid_amount);
+    let paidAmount =
+      dto.paidAmount !== undefined
+        ? Number(dto.paidAmount)
+        : Number(existing.paid_amount);
+
+    if (dto.paymentStatus === 'PAID') {
+      paidAmount = totalAmount;
+    } else if (dto.paymentStatus === 'DUE') {
+      paidAmount = 0;
+    }
+
     const balanceAmount = Math.max(0, totalAmount - paidAmount);
+    const paymentStatus =
+      dto.paymentStatus ??
+      (balanceAmount === 0 ? 'PAID' : paidAmount > 0 ? 'PARTIAL' : 'DUE');
 
     return this.prisma.$transaction(async (tx) => {
       // Process items if provided
@@ -928,9 +942,10 @@ export class BillingService {
           discount_amount: new Prisma.Decimal(discountAmount),
           discount_percent: new Prisma.Decimal(dto.discountPercent ?? Number(existing.discount_percent)),
           total_amount: new Prisma.Decimal(totalAmount),
+          paid_amount: new Prisma.Decimal(paidAmount),
           balance_amount: new Prisma.Decimal(balanceAmount),
           payment_method: dto.paymentMethod ?? existing.payment_method,
-          payment_status: dto.paymentStatus ?? (balanceAmount === 0 ? 'PAID' : 'PARTIAL'),
+          payment_status: paymentStatus,
           notes: dto.notes ?? existing.notes,
           updated_by: userId,
         },

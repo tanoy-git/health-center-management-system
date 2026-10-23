@@ -59,6 +59,7 @@ export default function InvoicesPage() {
     discountPercent: number;
     paymentMethod: string;
     paymentStatus: string;
+    paidAmount: number;
     notes: string;
     modificationReason: string;
     items: Array<{
@@ -76,6 +77,7 @@ export default function InvoicesPage() {
     discountPercent: 0,
     paymentMethod: 'CASH',
     paymentStatus: 'PAID',
+    paidAmount: 0,
     notes: '',
     modificationReason: '',
     items: [],
@@ -154,6 +156,7 @@ export default function InvoicesPage() {
         discountPercent: Number(full.discount_percent || 0),
         paymentMethod: full.payment_method || 'CASH',
         paymentStatus: full.payment_status || 'PAID',
+        paidAmount: Number(full.paid_amount || 0),
         notes: full.notes || '',
         modificationReason: '',
         items: (full.items || []).map((it: any) => ({
@@ -237,6 +240,23 @@ export default function InvoicesPage() {
     }));
   };
 
+  const editSubtotal = editForm.items.reduce(
+    (sum, it) => sum + Number(it.unitPrice || 0) * (it.quantity || 1),
+    0,
+  );
+  const editDiscount =
+    editForm.discountPercent > 0
+      ? (editSubtotal * editForm.discountPercent) / 100
+      : editForm.discountAmount || 0;
+  const editComputedTotal = Math.max(0, editSubtotal - editDiscount);
+  const editEffectivePaid =
+    editForm.paymentStatus === 'PAID'
+      ? editComputedTotal
+      : editForm.paymentStatus === 'DUE'
+      ? 0
+      : Math.min(editComputedTotal, Math.max(0, editForm.paidAmount || 0));
+  const editComputedDue = Math.max(0, editComputedTotal - editEffectivePaid);
+
   const handleSaveInvoiceEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingInvoice) return;
@@ -249,9 +269,14 @@ export default function InvoicesPage() {
     setEditError(null);
 
     try {
+      const payload = {
+        ...editForm,
+        paidAmount: editEffectivePaid,
+      };
+
       await apiRequest(`/billing/invoices/${editingInvoice.id}`, {
         method: 'PUT',
-        body: JSON.stringify(editForm),
+        body: JSON.stringify(payload),
       });
 
       setEditModalOpen(false);
@@ -824,7 +849,16 @@ export default function InvoicesPage() {
                   <select
                     value={editForm.paymentStatus}
                     onChange={(e) =>
-                      setEditForm({ ...editForm, paymentStatus: e.target.value })
+                      setEditForm({
+                        ...editForm,
+                        paymentStatus: e.target.value,
+                        paidAmount:
+                          e.target.value === 'PAID'
+                            ? editComputedTotal
+                            : e.target.value === 'DUE'
+                            ? 0
+                            : editForm.paidAmount,
+                      })
                     }
                     className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-xs focus:ring-2 focus:ring-primary outline-none cursor-pointer"
                   >
@@ -832,6 +866,39 @@ export default function InvoicesPage() {
                     <option value="PARTIAL">PARTIAL</option>
                     <option value="DUE">DUE</option>
                   </select>
+                </div>
+
+                {editForm.paymentStatus === 'PARTIAL' && (
+                  <div>
+                    <label className="font-semibold text-foreground">Paid Amount (tk)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max={editComputedTotal}
+                      step="0.01"
+                      value={editForm.paidAmount}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          paidAmount: Number(e.target.value),
+                        })
+                      }
+                      className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-xs focus:ring-2 focus:ring-primary outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Financial Calculation Summary Banner */}
+              <div className="rounded-xl border border-border bg-muted/40 p-3 text-xs flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-muted-foreground">Subtotal: <strong className="text-foreground">৳{editSubtotal.toFixed(2)}</strong></span>
+                  <span className="text-muted-foreground">Discount: <strong className="text-foreground">৳{editDiscount.toFixed(2)}</strong></span>
+                  <span className="text-muted-foreground">Net Billed: <strong className="text-blue-600 dark:text-blue-400">৳{editComputedTotal.toFixed(2)}</strong></span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-muted-foreground">Paid: <strong className="text-emerald-600 dark:text-emerald-400">৳{editEffectivePaid.toFixed(2)}</strong></span>
+                  <span className="text-muted-foreground">Due: <strong className={editComputedDue > 0 ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-emerald-600 dark:text-emerald-400'}>৳{editComputedDue.toFixed(2)}</strong></span>
                 </div>
               </div>
 

@@ -23,7 +23,7 @@ import {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, initialSetup } = useAuth();
+  const { user, loading, login, initialSetup } = useAuth();
 
   // Status check: is initial bootstrap required?
   const [checkingStatus, setCheckingStatus] = useState(true);
@@ -46,6 +46,13 @@ export default function LoginPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // If already authenticated, redirect immediately without delay
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace('/');
+    }
+  }, [user, loading, router]);
 
   // Check if system has any users in the database
   useEffect(() => {
@@ -70,10 +77,9 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(email, password);
-      router.push('/');
+      router.replace('/');
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.');
-    } finally {
       setSubmitting(false);
     }
   };
@@ -129,6 +135,17 @@ export default function LoginPage() {
     setEmail(demoEmail);
     setPassword(demoPass);
   };
+
+  if (user) {
+    return (
+      <div className="min-h-[85vh] flex items-center justify-center py-8 px-4">
+        <div className="rounded-2xl border border-border bg-card p-8 shadow-xl flex flex-col items-center justify-center space-y-3">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <p className="text-xs text-muted-foreground">Opening clinical workspace...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[85vh] flex items-center justify-center py-8 px-4">

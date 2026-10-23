@@ -93,13 +93,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.setItem('aegis_active_center_name', parsedUser.center.name);
           }
 
-          // Fetch centers list for switcher
-          try {
-            const centers = await apiRequest<Center[]>('/centers');
-            setAvailableCenters(centers);
-          } catch (e) {
-            setAvailableCenters([parsedUser.center]);
-          }
+          setAvailableCenters([parsedUser.center]);
+          // Set loading false immediately to avoid UI delay
+          setLoading(false);
+
+          // Fetch centers list in the background asynchronously
+          apiRequest<Center[]>('/centers')
+            .then((centers) => setAvailableCenters(centers))
+            .catch(() => setAvailableCenters([parsedUser.center]));
+          return;
         } catch (e) {
           localStorage.removeItem('aegis_user');
           localStorage.removeItem('aegis_token');
@@ -127,18 +129,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(res.user);
       setActiveCenter(res.user.center);
-
-      // Fetch centers list
-      try {
-        const centers = await apiRequest<Center[]>('/centers', {
-          headers: { Authorization: `Bearer ${res.accessToken}` },
-        });
-        setAvailableCenters(centers);
-      } catch (e) {
-        setAvailableCenters([res.user.center]);
-      }
-    } finally {
+      setAvailableCenters([res.user.center]);
+      // Immediately set loading to false so login screen transitions instantly
       setLoading(false);
+
+      // Fetch centers list in the background
+      apiRequest<Center[]>('/centers', {
+        headers: { Authorization: `Bearer ${res.accessToken}` },
+      })
+        .then((centers) => setAvailableCenters(centers))
+        .catch(() => setAvailableCenters([res.user.center]));
+    } catch (err) {
+      setLoading(false);
+      throw err;
     }
   };
 
@@ -158,17 +161,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(res.user);
       setActiveCenter(res.user.center);
-
-      try {
-        const centers = await apiRequest<Center[]>('/centers', {
-          headers: { Authorization: `Bearer ${res.accessToken}` },
-        });
-        setAvailableCenters(centers);
-      } catch (e) {
-        setAvailableCenters([res.user.center]);
-      }
-    } finally {
+      setAvailableCenters([res.user.center]);
       setLoading(false);
+
+      apiRequest<Center[]>('/centers', {
+        headers: { Authorization: `Bearer ${res.accessToken}` },
+      })
+        .then((centers) => setAvailableCenters(centers))
+        .catch(() => setAvailableCenters([res.user.center]));
+    } catch (err) {
+      setLoading(false);
+      throw err;
     }
   };
 

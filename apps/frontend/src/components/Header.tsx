@@ -179,8 +179,9 @@ export default function Header() {
                   <p className="text-xs font-semibold text-foreground">
                     {user.firstName} {user.lastName}
                   </p>
-                  <p className="text-[11px] text-muted-foreground truncate">
-                    {user.email}
+                  <p className="text-[11px] text-muted-foreground truncate font-mono">
+                    @{user.userName || user.email?.split('@')[0] || 'user'}
+                    {user.email && <span className="font-sans text-[10px] ml-1.5 opacity-70">({user.email})</span>}
                   </p>
                   <div className="mt-1.5 flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />

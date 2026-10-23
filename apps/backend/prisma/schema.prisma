@@ -116,7 +116,8 @@ model User {
   id            String    @id @default(uuid())
   center_id     String
   role_id       String
-  email         String    @unique
+  userName      String?   @unique @map("username")
+  email         String?   @unique
   password_hash String
   first_name    String
   last_name     String

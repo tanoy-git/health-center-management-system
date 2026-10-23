@@ -9,7 +9,9 @@ import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 export interface CreateEmployeeDto {
-  email: string;
+  userName?: string;
+  username?: string;
+  email?: string;
   password?: string;
   firstName: string;
   lastName: string;
@@ -23,6 +25,9 @@ export interface CreateEmployeeDto {
 }
 
 export interface UpdateEmployeeDto {
+  userName?: string;
+  username?: string;
+  email?: string;
   firstName?: string;
   lastName?: string;
   phone?: string;
@@ -62,6 +67,7 @@ export class HrService {
         user: {
           select: {
             id: true,
+            userName: true,
             email: true,
             first_name: true,
             last_name: true,
@@ -90,9 +96,15 @@ export class HrService {
   async createEmployee(centerId: string, dto: CreateEmployeeDto, creatorId?: string) {
     const targetCenterId = dto.centerId || centerId;
 
+    const userName = (dto.userName || dto.username || (dto.email ? dto.email.split('@')[0] : '')).trim().toLowerCase();
+    if (!userName) {
+      throw new BadRequestException('Username (userName) is required');
+    }
+
     // Disallow creating "admin" via system
     if (
-      dto.email.trim().toLowerCase() === 'admin' ||
+      userName === 'admin' ||
+      (dto.email && dto.email.trim().toLowerCase() === 'admin') ||
       dto.firstName.trim().toLowerCase() === 'admin' ||
       dto.employeeCode.trim().toLowerCase() === 'admin'
     ) {
@@ -101,12 +113,23 @@ export class HrService {
       );
     }
 
-    // Check if user email already exists
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    // Check if userName already exists
+    const existingUserName = await this.prisma.user.findFirst({
+      where: { userName: { equals: userName, mode: 'insensitive' } },
     });
-    if (existingUser) {
-      throw new BadRequestException(`Email ${dto.email} is already in use`);
+    if (existingUserName) {
+      throw new BadRequestException(`Username "${userName}" is already in use`);
+    }
+
+    // Check if email already exists (if provided)
+    const email = dto.email ? dto.email.trim().toLowerCase() : null;
+    if (email) {
+      const existingUser = await this.prisma.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' } },
+      });
+      if (existingUser) {
+        throw new BadRequestException(`Email "${email}" is already in use`);
+      }
     }
 
     // Check if employee code exists
@@ -126,7 +149,8 @@ export class HrService {
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
-          email: dto.email,
+          userName: userName,
+          email: email,
           password_hash: passwordHash,
           first_name: dto.firstName,
           last_name: dto.lastName,
@@ -153,6 +177,7 @@ export class HrService {
           user: {
             select: {
               id: true,
+              userName: true,
               email: true,
               first_name: true,
               last_name: true,
@@ -240,6 +265,8 @@ export class HrService {
         };
         if (dto.firstName) userUpdateData.first_name = dto.firstName.trim();
         if (dto.lastName) userUpdateData.last_name = dto.lastName.trim();
+        if (dto.userName || dto.username) userUpdateData.userName = (dto.userName || dto.username)!.trim().toLowerCase();
+        if (dto.email !== undefined) userUpdateData.email = dto.email ? dto.email.trim().toLowerCase() : null;
         if (dto.phone !== undefined) userUpdateData.phone = dto.phone;
         if (dto.roleId) userUpdateData.role_id = dto.roleId;
         if (dto.status) {
@@ -271,6 +298,7 @@ export class HrService {
           user: {
             select: {
               id: true,
+              userName: true,
               email: true,
               first_name: true,
               last_name: true,

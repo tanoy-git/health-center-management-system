@@ -15,7 +15,8 @@ export interface Center {
 
 export interface User {
   id: string;
-  email: string;
+  userName?: string;
+  email?: string;
   firstName: string;
   lastName: string;
   role: string;
@@ -28,7 +29,8 @@ export interface User {
 export interface InitialSetupData {
   firstName: string;
   lastName: string;
-  email: string;
+  userName?: string;
+  email?: string;
   password: string;
   phone?: string;
   centerName?: string;
@@ -39,7 +41,7 @@ interface AuthContextType {
   activeCenter: Center | null;
   availableCenters: Center[];
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   initialSetup: (data: InitialSetupData) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -109,12 +111,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initAuth();
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (username: string, password: string) => {
     setLoading(true);
     try {
       const res = await apiRequest('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, userName: username, email: username, password }),
       });
 
       localStorage.setItem('aegis_token', res.accessToken);

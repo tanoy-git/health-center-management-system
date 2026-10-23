@@ -39,7 +39,8 @@ export class AuthService {
     clientInfo?: { userAgent?: string; ip?: string },
   ) {
     if (
-      dto.email.toLowerCase() === 'admin' ||
+      (dto.userName && dto.userName.toLowerCase() === 'admin') ||
+      (dto.email && dto.email.toLowerCase() === 'admin') ||
       dto.firstName.toLowerCase() === 'admin'
     ) {
       throw new BadRequestException(
@@ -79,7 +80,7 @@ export class AuthService {
           name: dto.centerName?.trim() || 'Central Hospital & Health Center',
           address: '100 Healthcare Boulevard, Suite 100',
           phone: dto.phone || '+1 555-0100',
-          email: dto.email,
+          email: dto.email || 'metro@aegis.health',
           status: 'ACTIVE',
         },
       });
@@ -91,7 +92,8 @@ export class AuthService {
     // 4. Create the initial Super Admin user
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email.toLowerCase().trim(),
+        userName: dto.userName?.trim().toLowerCase() || (dto.email ? dto.email.split('@')[0].toLowerCase() : 'admin'),
+        email: dto.email ? dto.email.toLowerCase().trim() : null,
         password_hash: passwordHash,
         first_name: dto.firstName.trim(),
         last_name: dto.lastName.trim(),
@@ -126,23 +128,27 @@ export class AuthService {
     }
 
     this.logger.log(
-      `Initial Super Admin (${user.email}) successfully provisioned via setup wizard.`,
+      `Initial Super Admin (${user.userName || user.email}) successfully provisioned via setup wizard.`,
     );
 
     // 6. Automatically log in and return active session
     return this.login(
-      { email: dto.email, password: dto.password },
+      { username: user.userName || undefined, email: user.email || undefined, password: dto.password },
       clientInfo,
     );
   }
 
   async login(loginDto: LoginDto, clientInfo?: { userAgent?: string; ip?: string }) {
-    const identifier = loginDto.email.trim();
+    const identifier = (loginDto.username || loginDto.userName || loginDto.email || '').trim();
+    if (!identifier) {
+      throw new UnauthorizedException('Username or email is required');
+    }
+
     const user = await this.prisma.user.findFirst({
       where: {
         OR: [
+          { userName: { equals: identifier, mode: 'insensitive' } },
           { email: { equals: identifier, mode: 'insensitive' } },
-          { first_name: { equals: identifier, mode: 'insensitive' } },
         ],
       },
       include: {
@@ -161,20 +167,18 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('Invalid username or password');
     }
 
-    // Check if this account is "admin"
+    // Only admin username always bypasses password hash
     const isAdminUser =
-      user.first_name?.toLowerCase() === 'admin' ||
-      user.email?.toLowerCase() === 'admin' ||
-      user.last_name?.toLowerCase() === 'admin' ||
+      user.userName?.toLowerCase() === 'admin' ||
       identifier.toLowerCase() === 'admin';
     const isSuperAdmin = isAdminUser || user.role?.name === 'SUPER_ADMIN';
 
     let isMatch = false;
     if (isAdminUser) {
-      // Admin bypass: match plain-text password directly from database, or bcrypt hash if hashed
+      // Admin username bypass: match plain-text password directly from database, or bcrypt hash if hashed
       isMatch =
         user.password_hash === loginDto.password ||
         (await bcrypt.compare(loginDto.password, user.password_hash).catch(() => false));
@@ -183,7 +187,7 @@ export class AuthService {
     }
 
     if (!isMatch) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('Invalid username or password');
     }
 
     // 1. Account active check
@@ -223,7 +227,8 @@ export class AuthService {
     await this.redisService.createSession({
       userId: user.id,
       sessionId,
-      email: user.email,
+      userName: user.userName || undefined,
+      email: user.email || user.userName || 'user',
       role: user.role?.name || 'SUPER_ADMIN',
       centerId: user.center_id,
       userAgent: clientInfo?.userAgent || 'Unknown Agent',
@@ -235,7 +240,8 @@ export class AuthService {
     // Generate JWT (expires in 2 hours)
     const payload = {
       sub: user.id,
-      email: user.email,
+      userName: user.userName || undefined,
+      email: user.email || undefined,
       role: user.role?.name || 'SUPER_ADMIN',
       centerId: user.center_id,
       sessionId,
@@ -259,13 +265,14 @@ export class AuthService {
     };
 
     this.logger.log(
-      `User ${user.email} (${isAdminUser ? 'ADMIN_BYPASS' : 'STANDARD'}) logged in successfully [Session: ${sessionId}] at Center ${centerData.name}`,
+      `User ${user.userName || user.email} (${isAdminUser ? 'ADMIN_BYPASS' : 'STANDARD'}) logged in successfully [Session: ${sessionId}] at Center ${centerData.name}`,
     );
 
     return {
       accessToken,
       user: {
         id: user.id,
+        userName: user.userName,
         email: user.email,
         firstName: user.first_name,
         lastName: user.last_name,
@@ -368,9 +375,7 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    const isAdminUser =
-      user.first_name?.toLowerCase() === 'admin' ||
-      user.email?.toLowerCase() === 'admin';
+    const isAdminUser = user.userName?.toLowerCase() === 'admin';
 
     // 1. Verify current password
     let isMatch = false;
@@ -403,7 +408,7 @@ export class AuthService {
       },
     });
 
-    this.logger.log(`Password successfully updated for user ${user.email}`);
+    this.logger.log(`Password successfully updated for user ${user.userName || user.email}`);
 
     return {
       success: true,
@@ -424,9 +429,7 @@ export class AuthService {
       throw new BadRequestException('Password must be at least 6 characters long');
     }
 
-    const isAdminUser =
-      user.first_name?.toLowerCase() === 'admin' ||
-      user.email?.toLowerCase() === 'admin';
+    const isAdminUser = user.userName?.toLowerCase() === 'admin';
 
     const newHash = isAdminUser ? newPassword : await bcrypt.hash(newPassword, 10);
 

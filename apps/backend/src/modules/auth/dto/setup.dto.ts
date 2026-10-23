@@ -9,9 +9,13 @@ export class InitialSetupDto {
   @IsNotEmpty()
   lastName: string;
 
+  @IsString()
+  @IsOptional()
+  userName?: string;
+
   @IsEmail()
-  @IsNotEmpty()
-  email: string;
+  @IsOptional()
+  email?: string;
 
   @IsString()
   @IsNotEmpty()

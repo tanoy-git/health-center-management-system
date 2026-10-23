@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   Lock,
   Mail,
+  User,
   ArrowRight,
   AlertCircle,
   Building2,
@@ -307,16 +308,16 @@ export default function LoginPage() {
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-foreground">
-                  Work Email / Username
+                  Username
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <input
                     type="text"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="admin or doctor@aegis.health"
+                    placeholder="e.g. admin or dr.marcus"
                     className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
@@ -371,7 +372,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      handleQuickLogin('admin@aegis.health', 'Admin@123456')
+                      handleQuickLogin('admin', 'Admin@123456')
                     }
                     className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 hover:bg-muted p-2 text-left transition-colors"
                   >
@@ -379,7 +380,7 @@ export default function LoginPage() {
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold truncate">Super Admin</p>
                       <p className="text-[10px] text-muted-foreground truncate">
-                        Metro / All Centers
+                        @admin (All Centers)
                       </p>
                     </div>
                   </button>
@@ -387,7 +388,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      handleQuickLogin('dr.marcus@aegis.health', 'Staff@123456')
+                      handleQuickLogin('dr.marcus', 'Staff@123456')
                     }
                     className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 hover:bg-muted p-2 text-left transition-colors"
                   >
@@ -395,7 +396,7 @@ export default function LoginPage() {
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold truncate">Dr. Marcus</p>
                       <p className="text-[10px] text-muted-foreground truncate">
-                        Center A (Metro)
+                        @dr.marcus (Metro)
                       </p>
                     </div>
                   </button>
@@ -403,7 +404,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      handleQuickLogin('cashier.metro@aegis.health', 'Staff@123456')
+                      handleQuickLogin('cashier.metro', 'Staff@123456')
                     }
                     className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 hover:bg-muted p-2 text-left transition-colors"
                   >
@@ -411,7 +412,7 @@ export default function LoginPage() {
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold truncate">Cashier Elena</p>
                       <p className="text-[10px] text-muted-foreground truncate">
-                        Center A (Billing)
+                        @cashier.metro (Billing)
                       </p>
                     </div>
                   </button>
@@ -419,7 +420,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      handleQuickLogin('dr.sarah@aegis.health', 'Staff@123456')
+                      handleQuickLogin('dr.sarah', 'Staff@123456')
                     }
                     className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 hover:bg-muted p-2 text-left transition-colors"
                   >
@@ -427,7 +428,7 @@ export default function LoginPage() {
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold truncate">Dr. Sarah</p>
                       <p className="text-[10px] text-muted-foreground truncate">
-                        Center B (Westside)
+                        @dr.sarah (Westside)
                       </p>
                     </div>
                   </button>

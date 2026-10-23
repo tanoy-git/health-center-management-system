@@ -43,6 +43,7 @@ export default function HrPage() {
   const [onboardForm, setOnboardForm] = useState({
     firstName: '',
     lastName: '',
+    userName: '',
     email: '',
     phone: '',
     roleId: '',
@@ -238,6 +239,18 @@ export default function HrPage() {
         body: JSON.stringify(onboardForm),
       });
       setOnboardModalOpen(false);
+      setOnboardForm({
+        firstName: '',
+        lastName: '',
+        userName: '',
+        email: '',
+        phone: '',
+        roleId: roles.length > 0 ? roles[0].id : '',
+        employeeCode: '',
+        designation: '',
+        department: 'Clinical Medicine',
+        baseSalary: 5000,
+      });
       toast.success('Employee onboarded successfully');
       loadData();
     } catch (err: any) {
@@ -479,9 +492,10 @@ export default function HrPage() {
                       <p className="font-semibold text-foreground">
                         {emp.user?.first_name} {emp.user?.last_name}
                       </p>
-                      <span className="text-[10px] text-muted-foreground">
-                        {emp.user?.email}
-                      </span>
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                        <span className="font-mono text-primary font-medium">@{emp.user?.userName || emp.user?.username || 'user'}</span>
+                        {emp.user?.email && <span>• {emp.user.email}</span>}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-foreground font-medium">
                       {emp.designation}
@@ -703,15 +717,18 @@ export default function HrPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-semibold text-foreground">Email *</label>
+                  <label className="font-semibold text-foreground">
+                    Username (userName) *
+                  </label>
                   <input
-                    type="email"
+                    type="text"
                     required
-                    value={onboardForm.email}
+                    value={onboardForm.userName}
                     onChange={(e) =>
-                      setOnboardForm({ ...onboardForm, email: e.target.value })
+                      setOnboardForm({ ...onboardForm, userName: e.target.value.trim().toLowerCase() })
                     }
-                    className="w-full rounded border border-input bg-background p-2 outline-none"
+                    placeholder="e.g. john.doe"
+                    className="w-full rounded border border-input bg-background p-2 font-mono outline-none"
                   />
                 </div>
                 <div className="space-y-1">
@@ -730,6 +747,37 @@ export default function HrPage() {
                     }
                     placeholder="EMP-0301"
                     className="w-full rounded border border-input bg-background p-2 font-mono outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">
+                    Email (Optional)
+                  </label>
+                  <input
+                    type="email"
+                    value={onboardForm.email}
+                    onChange={(e) =>
+                      setOnboardForm({ ...onboardForm, email: e.target.value })
+                    }
+                    placeholder="john.doe@aegis.health"
+                    className="w-full rounded border border-input bg-background p-2 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">
+                    Phone (Optional)
+                  </label>
+                  <input
+                    type="tel"
+                    value={onboardForm.phone}
+                    onChange={(e) =>
+                      setOnboardForm({ ...onboardForm, phone: e.target.value })
+                    }
+                    placeholder="+880 1700-000000"
+                    className="w-full rounded border border-input bg-background p-2 outline-none"
                   />
                 </div>
               </div>

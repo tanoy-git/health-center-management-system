@@ -223,10 +223,12 @@ async function main() {
   const adminUser = await prisma.user.upsert({
     where: { email: 'admin@aegis.health' },
     update: {
+      userName: 'admin',
       password_hash: passwordHash,
       status: 'ACTIVE',
     },
     create: {
+      userName: 'admin',
       email: 'admin@aegis.health',
       password_hash: passwordHash,
       first_name: 'Alexander',
@@ -256,10 +258,12 @@ async function main() {
   const doctorMetroUser = await prisma.user.upsert({
     where: { email: 'dr.marcus@aegis.health' },
     update: {
+      userName: 'dr.marcus',
       password_hash: staffPasswordHash,
       status: 'ACTIVE',
     },
     create: {
+      userName: 'dr.marcus',
       email: 'dr.marcus@aegis.health',
       password_hash: staffPasswordHash,
       first_name: 'Marcus',
@@ -289,10 +293,12 @@ async function main() {
   const cashierMetroUser = await prisma.user.upsert({
     where: { email: 'cashier.metro@aegis.health' },
     update: {
+      userName: 'cashier.metro',
       password_hash: staffPasswordHash,
       status: 'ACTIVE',
     },
     create: {
+      userName: 'cashier.metro',
       email: 'cashier.metro@aegis.health',
       password_hash: staffPasswordHash,
       first_name: 'Elena',
@@ -322,10 +328,12 @@ async function main() {
   const doctorWestUser = await prisma.user.upsert({
     where: { email: 'dr.sarah@aegis.health' },
     update: {
+      userName: 'dr.sarah',
       password_hash: staffPasswordHash,
       status: 'ACTIVE',
     },
     create: {
+      userName: 'dr.sarah',
       email: 'dr.sarah@aegis.health',
       password_hash: staffPasswordHash,
       first_name: 'Sarah',
@@ -350,6 +358,23 @@ async function main() {
       status: 'ACTIVE',
     },
   });
+
+  // Populate userName for any existing users without one
+  try {
+    const usersWithoutUserName = await prisma.user.findMany({
+      where: { userName: null },
+    });
+    for (const u of usersWithoutUserName) {
+      const fallback = u.email ? u.email.split('@')[0] : `user_${u.id.substring(0, 5)}`;
+      await prisma.user.update({
+        where: { id: u.id },
+        data: { userName: fallback },
+      });
+      console.log(`Updated user ${u.id} with userName: ${fallback}`);
+    }
+  } catch (err) {
+    console.warn('Could not backfill userName for existing users:', err);
+  }
 
   // 5. Seed Dynamic Service Categories Table
   const sampleCategories = [

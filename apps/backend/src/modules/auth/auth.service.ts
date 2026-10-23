@@ -219,18 +219,22 @@ export class AuthService {
       throw new UnauthorizedException('Invalid username or password');
     }
 
-    // Only admin username always bypasses password hash
-    const isAdminUser =
-      user.userName?.toLowerCase() === 'admin' ||
-      identifier.toLowerCase() === 'admin';
-    const isSuperAdmin = isAdminUser || user.role?.name === 'SUPER_ADMIN';
+    const isSuperAdmin = user.role?.name === 'SUPER_ADMIN' || user.userName?.toLowerCase() === 'admin';
 
+    // Verify password securely using bcrypt
     let isMatch = false;
-    if (isAdminUser) {
-      // Admin username bypass: always bypass hash password check
-      isMatch = true;
-    } else {
+    if (user.password_hash?.startsWith('$2')) {
       isMatch = await bcrypt.compare(loginDto.password, user.password_hash);
+    } else if (user.password_hash) {
+      // Legacy plain-text fallback: verify and auto-upgrade to secure bcrypt hash
+      isMatch = user.password_hash === loginDto.password;
+      if (isMatch) {
+        const upgradedHash = await bcrypt.hash(loginDto.password, 10);
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { password_hash: upgradedHash },
+        });
+      }
     }
 
     if (!isMatch) {
@@ -260,9 +264,9 @@ export class AuthService {
       }
     }
 
-    // Extract database-driven permissions (Admin always gets super admin wildcard access)
+    // Extract database-driven permissions (Super Admin always gets wildcard access)
     const permissions =
-      isAdminUser || user.role?.name === 'SUPER_ADMIN'
+      isSuperAdmin
         ? ['*']
         : user.role?.role_permissions?.map((rp) => rp.permission.code) || [];
 
@@ -312,7 +316,7 @@ export class AuthService {
     };
 
     this.logger.log(
-      `User ${user.userName || user.email} (${isAdminUser ? 'ADMIN_BYPASS' : 'STANDARD'}) logged in successfully [Session: ${sessionId}] at Center ${centerData.name}`,
+      `User ${user.userName || user.email} logged in successfully [Session: ${sessionId}] at Center ${centerData.name}`,
     );
 
     return {
@@ -422,16 +426,12 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    const isAdminUser = user.userName?.toLowerCase() === 'admin';
-
-    // 1. Verify current password
+    // 1. Verify current password securely
     let isMatch = false;
-    if (isAdminUser) {
-      isMatch =
-        user.password_hash === dto.currentPassword ||
-        (await bcrypt.compare(dto.currentPassword, user.password_hash).catch(() => false));
-    } else {
+    if (user.password_hash?.startsWith('$2')) {
       isMatch = await bcrypt.compare(dto.currentPassword, user.password_hash);
+    } else if (user.password_hash) {
+      isMatch = user.password_hash === dto.currentPassword;
     }
 
     if (!isMatch) {
@@ -443,8 +443,8 @@ export class AuthService {
       throw new BadRequestException('New password cannot be the same as your current password.');
     }
 
-    // 3. Store plain text for admin, bcrypt hash for standard users
-    const newHash = isAdminUser ? dto.newPassword : await bcrypt.hash(dto.newPassword, 10);
+    // 3. Always store secure bcrypt hash for all users
+    const newHash = await bcrypt.hash(dto.newPassword, 10);
 
     // 4. Update password in database
     await this.prisma.user.update({
@@ -476,9 +476,8 @@ export class AuthService {
       throw new BadRequestException('Password must be at least 6 characters long');
     }
 
-    const isAdminUser = user.userName?.toLowerCase() === 'admin';
-
-    const newHash = isAdminUser ? newPassword : await bcrypt.hash(newPassword, 10);
+    // Always store secure bcrypt hash for all users
+    const newHash = await bcrypt.hash(newPassword, 10);
 
     await this.prisma.user.update({
       where: { id: targetUserId },

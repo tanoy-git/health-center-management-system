@@ -1,8 +1,12 @@
 function getApiBase(): string {
   if (typeof window !== 'undefined') {
     const publicUrl = process.env.NEXT_PUBLIC_API_URL;
-    if (publicUrl && publicUrl.trim() && !publicUrl.includes('localhost:4000')) {
-      return `${publicUrl.replace(/\/$/, '')}/api/v1`;
+    if (publicUrl && publicUrl.trim()) {
+      // Remove trailing slash and any redundant /api/v1 suffix
+      const cleanUrl = publicUrl.replace(/\/$/, '').replace(/\/api\/v1$/, '');
+      if (cleanUrl) {
+        return `${cleanUrl}/api/v1`;
+      }
     }
   }
   return '/api/v1';

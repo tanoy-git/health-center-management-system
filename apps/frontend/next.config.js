@@ -2,11 +2,22 @@
 const nextConfig = {
   reactStrictMode: true,
   async rewrites() {
-    const backendUrl =
-      process.env.NEXT_PUBLIC_API_URL ||
+    let backendUrl =
+      process.env.BACKEND_INTERNAL_URL ||
       process.env.BACKEND_URL ||
-      'http://localhost:4000';
-    const cleanBackendUrl = backendUrl.replace(/\/$/, '');
+      process.env.NEXT_PUBLIC_API_URL ||
+      'http://backend:4000';
+
+    // If it's a relative path like '/api/v1', route internally to the backend container
+    if (backendUrl.startsWith('/')) {
+      backendUrl = 'http://backend:4000';
+    }
+
+    // Strip trailing slashes and any duplicate /api/v1 suffix
+    const cleanBackendUrl = backendUrl
+      .replace(/\/$/, '')
+      .replace(/\/api\/v1$/, '');
+
     return [
       {
         source: '/api/v1/:path*',

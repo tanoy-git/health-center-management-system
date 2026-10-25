@@ -15,7 +15,8 @@ export interface Center {
 
 export interface User {
   id: string;
-  email: string;
+  userName?: string;
+  email?: string;
   firstName: string;
   lastName: string;
   role: string;
@@ -28,7 +29,8 @@ export interface User {
 export interface InitialSetupData {
   firstName: string;
   lastName: string;
-  email: string;
+  userName?: string;
+  email?: string;
   password: string;
   phone?: string;
   centerName?: string;
@@ -39,12 +41,13 @@ interface AuthContextType {
   activeCenter: Center | null;
   availableCenters: Center[];
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   initialSetup: (data: InitialSetupData) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   logout: () => Promise<void>;
   switchCenter: (center: Center) => void;
   hasPermission: (perm: string) => boolean;
+  reloadCenters: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -58,6 +61,7 @@ const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
   switchCenter: () => {},
   hasPermission: () => false,
+  reloadCenters: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -91,13 +95,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.setItem('aegis_active_center_name', parsedUser.center.name);
           }
 
-          // Fetch centers list for switcher
-          try {
-            const centers = await apiRequest<Center[]>('/centers');
-            setAvailableCenters(centers);
-          } catch (e) {
-            setAvailableCenters([parsedUser.center]);
-          }
+          setAvailableCenters([parsedUser.center]);
+          // Set loading false immediately to avoid UI delay
+          setLoading(false);
+
+          // Fetch centers list in the background asynchronously
+          apiRequest<Center[]>('/centers')
+            .then((centers) => setAvailableCenters(centers))
+            .catch(() => setAvailableCenters([parsedUser.center]));
+          return;
         } catch (e) {
           localStorage.removeItem('aegis_user');
           localStorage.removeItem('aegis_token');
@@ -109,12 +115,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     initAuth();
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (username: string, password: string) => {
     setLoading(true);
     try {
       const res = await apiRequest('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, userName: username, email: username, password }),
       });
 
       localStorage.setItem('aegis_token', res.accessToken);
@@ -125,18 +131,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(res.user);
       setActiveCenter(res.user.center);
-
-      // Fetch centers list
-      try {
-        const centers = await apiRequest<Center[]>('/centers', {
-          headers: { Authorization: `Bearer ${res.accessToken}` },
-        });
-        setAvailableCenters(centers);
-      } catch (e) {
-        setAvailableCenters([res.user.center]);
-      }
-    } finally {
+      setAvailableCenters([res.user.center]);
+      // Immediately set loading to false so login screen transitions instantly
       setLoading(false);
+
+      // Fetch centers list in the background
+      apiRequest<Center[]>('/centers', {
+        headers: { Authorization: `Bearer ${res.accessToken}` },
+      })
+        .then((centers) => setAvailableCenters(centers))
+        .catch(() => setAvailableCenters([res.user.center]));
+    } catch (err) {
+      setLoading(false);
+      throw err;
     }
   };
 
@@ -156,17 +163,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(res.user);
       setActiveCenter(res.user.center);
-
-      try {
-        const centers = await apiRequest<Center[]>('/centers', {
-          headers: { Authorization: `Bearer ${res.accessToken}` },
-        });
-        setAvailableCenters(centers);
-      } catch (e) {
-        setAvailableCenters([res.user.center]);
-      }
-    } finally {
+      setAvailableCenters([res.user.center]);
       setLoading(false);
+
+      apiRequest<Center[]>('/centers', {
+        headers: { Authorization: `Bearer ${res.accessToken}` },
+      })
+        .then((centers) => setAvailableCenters(centers))
+        .catch(() => setAvailableCenters([res.user.center]));
+    } catch (err) {
+      setLoading(false);
+      throw err;
     }
   };
 
@@ -208,6 +215,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return user.permissions.includes(perm);
   };
 
+  const reloadCenters = async () => {
+    try {
+      const centers = await apiRequest<Center[]>('/centers');
+      if (Array.isArray(centers) && centers.length > 0) {
+        setAvailableCenters(centers);
+      }
+    } catch {}
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -221,6 +237,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         logout,
         switchCenter,
         hasPermission,
+        reloadCenters,
       }}
     >
       {children}

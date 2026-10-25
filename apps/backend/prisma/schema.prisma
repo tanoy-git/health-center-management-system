@@ -1,4 +1,4 @@
-// Aegis Enterprise HIS v2.0 - Multi-Tenant Domain-Driven Database Schema
+// Health Center Management System v2.0 - Multi-Tenant Domain-Driven Database Schema
 generator client {
   provider      = "prisma-client-js"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
@@ -34,7 +34,6 @@ model Center {
   attendances         Attendance[]
   payrolls            Payroll[]
   patients            Patient[]
-  services            ServiceCatalog[]
   invoices            Invoice[]
   invoice_items       InvoiceItem[]
   invoice_audit_logs  InvoiceAuditLog[]
@@ -42,6 +41,9 @@ model Center {
   prescriptions       Prescription[]
   prescription_items  PrescriptionItem[]
   diagnostic_reports  DiagnosticReport[]
+  discount_campaigns  DiscountCampaign[]
+  referral_commission_rules ReferralCommissionRule[]
+  referral_commissions      ReferralCommission[]
 
   @@map("centers")
 }
@@ -112,7 +114,8 @@ model User {
   id            String    @id @default(uuid())
   center_id     String
   role_id       String
-  email         String    @unique
+  userName      String?   @unique @map("username")
+  email         String?   @unique
   password_hash String
   first_name    String
   last_name     String
@@ -158,7 +161,9 @@ model Employee {
   user          User          @relation(fields: [user_id], references: [id])
   attendances   Attendance[]
   payrolls      Payroll[]
-  referred_patients Patient[] @relation("ReferredPatients")
+  referred_patients   Patient[]                  @relation("ReferredPatients")
+  commission_rules    ReferralCommissionRule[]
+  earned_commissions  ReferralCommission[]
 
   @@map("employees")
 }
@@ -243,8 +248,9 @@ model Patient {
   center            Center    @relation(fields: [center_id], references: [id])
   referred_by       Employee? @relation("ReferredPatients", fields: [referred_by_id], references: [id])
   invoices          Invoice[]
-  prescriptions     Prescription[]
+  prescriptions      Prescription[]
   diagnostic_reports DiagnosticReport[]
+  commissions        ReferralCommission[]
 
   @@map("patients")
 }
@@ -252,12 +258,33 @@ model Patient {
 // ----------------------------------------------------
 // 5. SERVICE & BILLING POS
 // ----------------------------------------------------
+model ServiceCategory {
+  id          String    @id @default(uuid())
+  code        String    @unique // e.g. USG, PROCEDURE, LAB_TEST, CONSULTATION, EYE
+  name        String    // e.g. "Ultrasonography (USG)", "General Consultation"
+  description String?
+  status      String    @default("ACTIVE") // ACTIVE, INACTIVE
+
+  // Audit & Soft Delete
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+  created_by  String?
+  updated_by  String?
+
+  services           ServiceCatalog[]
+  campaigns          DiscountCampaign[]
+  commission_rules   ReferralCommissionRule[]
+
+  @@map("service_categories")
+}
+
 model ServiceCatalog {
   id          String   @id @default(uuid())
-  center_id   String
-  code        String
+  code        String   @unique
   name        String
-  category    String   // CONSULTATION, LAB_TEST, USG, RADIOLOGY, PROCEDURE
+  category    String   // CONSULTATION, LAB_TEST, USG, RADIOLOGY, PROCEDURE, EYE
+  category_id String?
   price       Decimal  @db.Decimal(10, 2)
   tax_rate    Decimal  @default(0.00) @db.Decimal(5, 2)
   status      String   @default("ACTIVE") // ACTIVE, INACTIVE
@@ -269,11 +296,70 @@ model ServiceCatalog {
   created_by  String?
   updated_by  String?
 
-  center        Center        @relation(fields: [center_id], references: [id])
-  invoice_items InvoiceItem[]
+  category_rel       ServiceCategory?   @relation(fields: [category_id], references: [id])
+  invoice_items      InvoiceItem[]
+  discount_campaigns DiscountCampaign[]
+  commission_rules   ReferralCommissionRule[]
+  attributes         ServiceTestAttribute[]
+  diagnostic_reports DiagnosticReport[]
 
-  @@unique([center_id, code])
   @@map("service_catalog")
+}
+
+model ServiceTestAttribute {
+  id              String    @id @default(uuid())
+  service_id      String
+  name            String    // Parameter name, e.g. "Hemoglobin (Hb)", "Total WBC Count"
+  unit            String?   // Unit of measurement, e.g. "g/dL", "mg/dL", "/cumm", "%"
+  reference_range String?   // Normal / reference value, e.g. "12.0 - 16.0"
+  display_order   Int       @default(0)
+  status          String    @default("ACTIVE") // ACTIVE, INACTIVE
+
+  // Audit & Soft Delete
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+  deleted_at      DateTime?
+  created_by      String?
+  updated_by      String?
+
+  service         ServiceCatalog                    @relation(fields: [service_id], references: [id], onDelete: Cascade)
+  report_results  DiagnosticReportAttributeResult[]
+
+  @@map("service_test_attributes")
+}
+
+model DiscountCampaign {
+  id             String    @id @default(uuid())
+  center_id      String?
+  name           String    // e.g. "Senior Citizens Male Discount"
+  code           String?   // optional promo code e.g. SENIOR60
+  description    String?
+  discount_type  String    @default("PERCENTAGE") // PERCENTAGE, FIXED_AMOUNT
+  discount_value Decimal   @db.Decimal(10, 2)
+
+  // Eligibility Rules
+  min_age        Int?      // e.g. 60
+  max_age        Int?
+  gender         String?   // 'MALE', 'FEMALE', 'OTHER' (or null for ANY)
+  service_id     String?   // optional specific service
+  category_id    String?   // optional specific category
+  start_date     DateTime?
+  end_date       DateTime?
+  status         String    @default("ACTIVE") // ACTIVE, INACTIVE
+
+  // Audit & Soft Delete
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+  deleted_at     DateTime?
+  created_by     String?
+  updated_by     String?
+
+  center         Center?          @relation(fields: [center_id], references: [id])
+  service        ServiceCatalog?  @relation(fields: [service_id], references: [id])
+  category       ServiceCategory? @relation(fields: [category_id], references: [id])
+  invoice_items  InvoiceItem[]
+
+  @@map("discount_campaigns")
 }
 
 model Invoice {
@@ -304,32 +390,41 @@ model Invoice {
   patient          Patient           @relation(fields: [patient_id], references: [id])
   items            InvoiceItem[]
   audit_logs       InvoiceAuditLog[]
+  commissions      ReferralCommission[]
 
   @@map("invoices")
 }
 
 model InvoiceItem {
-  id          String   @id @default(uuid())
-  center_id   String
-  invoice_id  String
-  service_id  String?
-  item_name   String
-  category    String
-  unit_price  Decimal  @db.Decimal(10, 2)
-  quantity    Int      @default(1)
-  total_price Decimal  @db.Decimal(10, 2)
-  is_queued   Boolean  @default(true) // Patient Queue flag: true = in queue, false = completed/out
+  id                   String   @id @default(uuid())
+  center_id            String
+  invoice_id           String
+  service_id           String?
+  discount_campaign_id String?
+  item_name            String
+  category             String
+  unit_price           Decimal  @db.Decimal(10, 2)
+  quantity             Int      @default(1)
+  discount_amount      Decimal  @default(0.00) @db.Decimal(10, 2)
+  total_price          Decimal  @db.Decimal(10, 2)
+  is_queued            Boolean  @default(true) // Patient Queue flag: true = in queue, false = completed/out
+  is_refunded          Boolean  @default(false)
+  refund_reason        String?
+  refunded_at          DateTime?
+  refunded_by          String?
 
   // Audit & Soft Delete
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
-  deleted_at  DateTime?
-  created_by  String?
-  updated_by  String?
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
+  deleted_at           DateTime?
+  created_by           String?
+  updated_by           String?
 
-  center      Center          @relation(fields: [center_id], references: [id])
-  invoice     Invoice         @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
-  service     ServiceCatalog? @relation(fields: [service_id], references: [id])
+  center               Center            @relation(fields: [center_id], references: [id])
+  invoice              Invoice           @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  service              ServiceCatalog?   @relation(fields: [service_id], references: [id])
+  discount_campaign    DiscountCampaign? @relation(fields: [discount_campaign_id], references: [id])
+  commissions          ReferralCommission[]
 
   @@map("invoice_items")
 }
@@ -353,6 +448,60 @@ model InvoiceAuditLog {
   invoice      Invoice   @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
 
   @@map("invoice_audit_logs")
+}
+
+model ReferralCommissionRule {
+  id               String          @id @default(uuid())
+  center_id        String
+  employee_id      String?         // null = applies to all employees
+  service_id       String?         // null = applies to all or category
+  category_id      String?         // optional specific category
+  commission_type  String          @default("PERCENTAGE") // PERCENTAGE, FIXED_AMOUNT
+  commission_value Decimal         @db.Decimal(10, 2)
+  status           String          @default("ACTIVE") // ACTIVE, INACTIVE
+
+  created_at       DateTime        @default(now())
+  updated_at       DateTime        @updatedAt
+  deleted_at       DateTime?
+  created_by       String?
+  updated_by       String?
+
+  center           Center          @relation(fields: [center_id], references: [id])
+  employee         Employee?       @relation(fields: [employee_id], references: [id])
+  service          ServiceCatalog? @relation(fields: [service_id], references: [id])
+  category         ServiceCategory? @relation(fields: [category_id], references: [id])
+
+  @@map("referral_commission_rules")
+}
+
+model ReferralCommission {
+  id                 String          @id @default(uuid())
+  center_id          String
+  invoice_id         String
+  invoice_item_id    String?
+  patient_id         String
+  employee_id        String          // Referring employee
+  service_id         String?
+  category_id        String?
+  service_name       String
+  service_category   String
+  service_amount     Decimal         @db.Decimal(10, 2)
+  commission_type    String          // PERCENTAGE, FIXED_AMOUNT
+  commission_rate    Decimal         @db.Decimal(10, 2)
+  commission_amount  Decimal         @db.Decimal(10, 2)
+  status             String          @default("EARNED") // EARNED, PAID, CANCELLED
+
+  created_at         DateTime        @default(now())
+  updated_at         DateTime        @updatedAt
+  deleted_at         DateTime?
+
+  center             Center          @relation(fields: [center_id], references: [id])
+  invoice            Invoice         @relation(fields: [invoice_id], references: [id], onDelete: Cascade)
+  invoice_item       InvoiceItem?    @relation(fields: [invoice_item_id], references: [id], onDelete: SetNull)
+  patient            Patient         @relation(fields: [patient_id], references: [id])
+  employee           Employee        @relation(fields: [employee_id], references: [id])
+
+  @@map("referral_commissions")
 }
 
 // ----------------------------------------------------
@@ -395,6 +544,8 @@ model Prescription {
   diagnosis           String?   @db.Text
   vitals              String?   @db.Text // JSON string: { bp, pulse, temp, weight, spo2 }
   follow_up_date      DateTime?
+  prescription_type   String    @default("GENERAL") // GENERAL, EYE
+  eye_data            String?   @db.Text // JSON string for eye measurements: { visualAcuity, refraction, iop, slitLamp, fundus, lensRecommendation, remarks }
   status              String    @default("ACTIVE")
 
   // Audit & Soft Delete
@@ -463,6 +614,29 @@ model DiagnosticReport {
 
   center            Center    @relation(fields: [center_id], references: [id])
   patient           Patient   @relation(fields: [patient_id], references: [id])
+  service_id        String?
+  service           ServiceCatalog? @relation(fields: [service_id], references: [id])
+  attribute_results DiagnosticReportAttributeResult[]
 
   @@map("diagnostic_reports")
+}
+
+model DiagnosticReportAttributeResult {
+  id              String   @id @default(uuid())
+  report_id       String
+  attribute_id    String?
+  attribute_name  String
+  attribute_unit  String?
+  reference_range String?
+  value           String   // Lab measured result value entered for this test
+  flag            String?  // NORMAL, HIGH, LOW, ABNORMAL
+  display_order   Int      @default(0)
+
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  report          DiagnosticReport      @relation(fields: [report_id], references: [id], onDelete: Cascade)
+  attribute       ServiceTestAttribute? @relation(fields: [attribute_id], references: [id], onDelete: SetNull)
+
+  @@map("diagnostic_report_attribute_results")
 }

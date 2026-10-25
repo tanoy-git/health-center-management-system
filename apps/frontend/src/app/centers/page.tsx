@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/api';
+import { toast } from '@/components/Toast';
 import {
   Building2,
   Plus,
@@ -17,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export default function CentersPage() {
-  const { hasPermission, switchCenter, activeCenter } = useAuth();
+  const { hasPermission, switchCenter, activeCenter, reloadCenters } = useAuth();
   const [centers, setCenters] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -83,16 +84,19 @@ export default function CentersPage() {
           method: 'PUT',
           body: JSON.stringify(form),
         });
+        toast.success(`Center "${form.name}" updated successfully`);
       } else {
         await apiRequest('/centers', {
           method: 'POST',
           body: JSON.stringify(form),
         });
+        toast.success(`Center "${form.name}" created successfully`);
       }
       setIsModalOpen(false);
       loadCenters();
+      if (reloadCenters) reloadCenters();
     } catch (err: any) {
-      alert(err.message || 'Operation failed');
+      toast.error(err.message || 'Operation failed');
     }
   };
 
@@ -101,9 +105,11 @@ export default function CentersPage() {
       return;
     try {
       await apiRequest(`/centers/${id}`, { method: 'DELETE' });
+      toast.success(`Center "${name}" deleted successfully`);
       loadCenters();
+      if (reloadCenters) reloadCenters();
     } catch (err: any) {
-      alert(err.message || 'Failed to delete center');
+      toast.error(err.message || 'Failed to delete center');
     }
   };
 

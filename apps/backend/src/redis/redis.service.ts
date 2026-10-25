@@ -5,7 +5,8 @@ import Redis from 'ioredis';
 export interface UserSessionData {
   userId: string;
   sessionId: string;
-  email: string;
+  userName?: string;
+  email?: string;
   role: string;
   centerId: string;
   userAgent?: string;

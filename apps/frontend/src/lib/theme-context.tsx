@@ -18,20 +18,25 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>('light');
 
   useEffect(() => {
+    const initialized = localStorage.getItem('aegis_theme_init');
+    if (!initialized) {
+      localStorage.setItem('aegis_theme', 'light');
+      localStorage.setItem('aegis_theme_init', 'true');
+      setTheme('light');
+      document.documentElement.classList.remove('dark');
+      document.documentElement.setAttribute('data-theme', 'light');
+      return;
+    }
+
     const saved = localStorage.getItem('aegis_theme') as Theme;
-    if (saved) {
-      setTheme(saved);
-      if (saved === 'dark') {
-        document.documentElement.classList.add('dark');
-        document.documentElement.setAttribute('data-theme', 'dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-        document.documentElement.setAttribute('data-theme', 'light');
-      }
-    } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    if (saved === 'dark') {
       setTheme('dark');
       document.documentElement.classList.add('dark');
       document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      setTheme('light');
+      document.documentElement.classList.remove('dark');
+      document.documentElement.setAttribute('data-theme', 'light');
     }
   }, []);
 

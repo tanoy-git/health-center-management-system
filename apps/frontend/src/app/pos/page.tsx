@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/api';
+import { toast } from '@/components/Toast';
 import ThermalReceiptModal from '@/components/ThermalReceiptModal';
 import A4InvoiceModal from '@/components/A4InvoiceModal';
 import {
@@ -21,27 +22,33 @@ import {
   ChevronDown,
   X,
   Check,
+  Sparkles,
 } from 'lucide-react';
 
 interface CartItem {
   serviceId?: string;
   itemName: string;
   category: string;
+  categoryId?: string;
   unitPrice: number;
   quantity: number;
+  discountCampaignId?: string;
+  discountCampaignName?: string;
+  discountAmount?: number;
 }
 
 export default function PosBillingPage() {
   const { activeCenter } = useAuth();
   const [services, setServices] = useState<any[]>([]);
   const [patients, setPatients] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
   const [patientSearch, setPatientSearch] = useState('');
   const [isPatientDropdownOpen, setIsPatientDropdownOpen] = useState(false);
   const patientDropdownRef = useRef<HTMLDivElement>(null);
   const [searchService, setSearchService] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('USG');
-
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 
   // Cart State
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -79,11 +86,16 @@ export default function PosBillingPage() {
 
   const loadServicesAndPatients = async () => {
     try {
-      const srvList = await apiRequest('/billing/services');
+      const [srvList, ptList, catList, campList] = await Promise.all([
+        apiRequest('/billing/services?status=ACTIVE').catch(() => []),
+        apiRequest('/patients').catch(() => []),
+        apiRequest('/billing/categories?status=ACTIVE').catch(() => []),
+        apiRequest('/billing/discount-campaigns?status=ACTIVE').catch(() => []),
+      ]);
       setServices(srvList || []);
-
-      const ptList = await apiRequest('/patients');
       setPatients(ptList || []);
+      setCategories(catList || []);
+      setCampaigns(campList || []);
     } catch (e) {
       console.error(e);
     }
@@ -102,6 +114,7 @@ export default function PosBillingPage() {
           serviceId: service.id,
           itemName: service.name,
           category: service.category,
+          categoryId: service.category_id,
           unitPrice: Number(service.price),
           quantity: 1,
         },
@@ -135,21 +148,112 @@ export default function PosBillingPage() {
     setNotes('');
   };
 
-  // Calculations
-  const subtotal = cart.reduce(
+  // Patient Demographics Helper
+  const selectedPatient = patients.find((p) => p.id === selectedPatientId);
+
+  const calculateAge = (dobString?: string) => {
+    if (!dobString) return null;
+    const birthDate = new Date(dobString);
+    if (isNaN(birthDate.getTime())) return null;
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const patientAge = calculateAge(selectedPatient?.dob);
+  const patientGender = selectedPatient?.gender;
+
+  // Evaluate dynamic discount campaigns per item
+  const evaluatedCart = cart.map((item) => {
+    let bestCampaign: any = null;
+    let maxDiscount = 0;
+    const lineTotal = item.unitPrice * item.quantity;
+    const now = new Date();
+
+    for (const camp of campaigns) {
+      if (camp.status !== 'ACTIVE') continue;
+      // Date validity
+      if (camp.start_date && now < new Date(camp.start_date)) continue;
+      if (camp.end_date && now > new Date(camp.end_date)) continue;
+
+      // Age validity
+      if (patientAge !== null && patientAge !== undefined) {
+        if (camp.min_age !== null && patientAge < camp.min_age) continue;
+        if (camp.max_age !== null && patientAge > camp.max_age) continue;
+      } else if (camp.min_age !== null || camp.max_age !== null) {
+        continue;
+      }
+
+      // Gender validity
+      if (camp.gender && camp.gender !== 'ALL') {
+        if (!patientGender || patientGender.toUpperCase() !== camp.gender.toUpperCase()) {
+          continue;
+        }
+      }
+
+      // Service validity
+      if (camp.service_id && item.serviceId && camp.service_id !== item.serviceId) {
+        continue;
+      }
+
+      // Category validity
+      if (camp.category_id) {
+        if (item.categoryId && camp.category_id !== item.categoryId) {
+          continue;
+        }
+        if (!item.categoryId && camp.category?.code) {
+          if (item.category?.toUpperCase() !== camp.category.code.toUpperCase()) {
+            continue;
+          }
+        }
+      }
+
+      // Calculate discount amount
+      let discount = 0;
+      if (camp.discount_type === 'PERCENTAGE') {
+        discount = (lineTotal * Number(camp.discount_value)) / 100;
+      } else {
+        discount = Math.min(lineTotal, Number(camp.discount_value));
+      }
+
+      if (discount > maxDiscount) {
+        maxDiscount = discount;
+        bestCampaign = camp;
+      }
+    }
+
+    return {
+      ...item,
+      discountCampaignId: bestCampaign ? bestCampaign.id : undefined,
+      discountCampaignName: bestCampaign ? bestCampaign.name : undefined,
+      discountAmount: maxDiscount,
+      finalLineTotal: Math.max(0, lineTotal - maxDiscount),
+    };
+  });
+
+  const rawSubtotal = cart.reduce(
     (sum, item) => sum + item.unitPrice * item.quantity,
     0,
   );
-  const discountAmount = (subtotal * (discountPercent || 0)) / 100;
-  const totalAmount = Math.max(0, subtotal - discountAmount);
+  const campaignDiscountTotal = evaluatedCart.reduce(
+    (sum, item) => sum + (item.discountAmount || 0),
+    0,
+  );
+  const extraDiscountAmount = ((rawSubtotal - campaignDiscountTotal) * (discountPercent || 0)) / 100;
+  const totalDiscount = campaignDiscountTotal + extraDiscountAmount;
+  const totalAmount = Math.max(0, rawSubtotal - totalDiscount);
 
   const handleCheckout = async () => {
     if (!selectedPatientId) {
-      alert('Please select a registered patient');
+      toast.warning('Please select a registered patient');
       return;
     }
     if (cart.length === 0) {
-      alert('Cart is empty. Please add billable services.');
+      toast.warning('Cart is empty. Please add billable services.');
       return;
     }
 
@@ -159,9 +263,17 @@ export default function PosBillingPage() {
         method: 'POST',
         body: JSON.stringify({
           patientId: selectedPatientId,
-          items: cart,
+          items: evaluatedCart.map((it) => ({
+            serviceId: it.serviceId,
+            itemName: it.itemName,
+            category: it.category,
+            unitPrice: it.unitPrice,
+            quantity: it.quantity,
+            discountCampaignId: it.discountCampaignId,
+            discountAmount: it.discountAmount,
+          })),
           discountPercent,
-          discountAmount,
+          discountAmount: extraDiscountAmount,
           paymentMethod,
           paidAmount: totalAmount,
           notes,
@@ -182,29 +294,26 @@ export default function PosBillingPage() {
       setDiscountPercent(0);
       setNotes('');
 
+      toast.success(`Invoice #${invoice.invoice_number} created successfully`);
       // Open A4 invoice modal by default
       setA4ModalOpen(true);
     } catch (err: any) {
-      alert(err.message || 'Invoice checkout failed');
+      toast.error(err.message || 'Invoice checkout failed');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Categories list - USG and PROCEDURE only
-  // const categories = ['USG', 'PROCEDURE'];
-  const categories = ['USG'];
-
   const filteredServices = services.filter((s) => {
     const matchesCategory =
-      s.category?.toUpperCase() === selectedCategory.toUpperCase();
+      selectedCategory === 'ALL' ||
+      s.category?.toUpperCase() === selectedCategory.toUpperCase() ||
+      s.category_id === selectedCategory;
     const matchesSearch =
       s.name.toLowerCase().includes(searchService.toLowerCase()) ||
       s.code.toLowerCase().includes(searchService.toLowerCase());
     return matchesCategory && matchesSearch;
   });
-
-  const selectedPatient = patients.find((p) => p.id === selectedPatientId);
 
   const filteredPatients = patients.filter((p) => {
     if (!patientSearch.trim()) return true;
@@ -373,11 +482,32 @@ export default function PosBillingPage() {
                 )}
               </div>
             )}
+
+            {/* Selected Patient Demographics & Discount Eligibility Alert */}
+            {selectedPatient && (
+              <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-muted-foreground">
+                <span className="rounded bg-muted px-2 py-0.5 font-medium">
+                  Gender: <strong className="text-foreground">{selectedPatient.gender || 'N/A'}</strong>
+                </span>
+                <span className="rounded bg-muted px-2 py-0.5 font-medium">
+                  Age:{' '}
+                  <strong className="text-foreground">
+                    {patientAge !== null ? `${patientAge} yrs` : 'N/A'}
+                  </strong>
+                </span>
+                {campaigns.length > 0 && (
+                  <span className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded-full">
+                    <Sparkles className="h-3 w-3" />
+                    <span>{campaigns.length} Campaign{campaigns.length > 1 ? 's' : ''} Active</span>
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Cart Items List */}
           <div className="space-y-2 min-h-[220px] max-h-[300px] overflow-y-auto pr-1 divide-y divide-border/60">
-            {cart.length === 0 ? (
+            {evaluatedCart.length === 0 ? (
               <div className="py-16 text-center text-xs text-muted-foreground space-y-1">
                 <Receipt className="h-8 w-8 mx-auto text-muted-foreground opacity-30" />
                 <p className="font-semibold text-foreground">Cart is Empty</p>
@@ -386,12 +516,20 @@ export default function PosBillingPage() {
                 </p>
               </div>
             ) : (
-              cart.map((item, idx) => (
+              evaluatedCart.map((item, idx) => (
                 <div key={idx} className="pt-2 flex items-center justify-between text-xs">
                   <div className="min-w-0 flex-1 pr-2">
-                    <p className="font-semibold text-foreground truncate">
-                      {item.itemName}
-                    </p>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="font-semibold text-foreground truncate">
+                        {item.itemName}
+                      </p>
+                      {item.discountCampaignName && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[9px] font-bold border border-amber-500/20">
+                          <Sparkles className="h-2.5 w-2.5" />
+                          {item.discountCampaignName} (-{item.discountAmount?.toFixed(2)} tk)
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[10px] text-muted-foreground">
                       {item.unitPrice.toFixed(2)} tk each
                     </span>
@@ -417,9 +555,22 @@ export default function PosBillingPage() {
                       </button>
                     </div>
 
-                    <span className="font-mono font-bold text-foreground w-16 text-right">
-                      {(item.unitPrice * item.quantity).toFixed(2)} tk
-                    </span>
+                    <div className="w-20 text-right">
+                      {item.discountAmount && item.discountAmount > 0 ? (
+                        <div>
+                          <span className="line-through text-muted-foreground text-[10px] block">
+                            {(item.unitPrice * item.quantity).toFixed(2)} tk
+                          </span>
+                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                            {(item.unitPrice * item.quantity - item.discountAmount).toFixed(2)} tk
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="font-mono font-bold text-foreground">
+                          {(item.unitPrice * item.quantity).toFixed(2)} tk
+                        </span>
+                      )}
+                    </div>
 
                     <button
                       onClick={() => removeFromCart(idx)}
@@ -440,7 +591,7 @@ export default function PosBillingPage() {
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1 text-muted-foreground font-medium">
                   <Tag className="h-3.5 w-3.5 text-blue-500" />
-                  <span>Discount Override:</span>
+                  <span>Manual Discount Override:</span>
                 </span>
                 <div className="flex items-center gap-1">
                   <input
@@ -483,13 +634,22 @@ export default function PosBillingPage() {
               {/* Total Summary */}
               <div className="rounded-xl bg-muted/40 p-3.5 space-y-1 text-xs">
                 <div className="flex justify-between text-muted-foreground">
-                  <span>Subtotal:</span>
-                  <span className="font-mono font-medium">{subtotal.toFixed(2)} tk</span>
+                  <span>Gross Subtotal:</span>
+                  <span className="font-mono font-medium">{rawSubtotal.toFixed(2)} tk</span>
                 </div>
-                {discountAmount > 0 && (
+                {campaignDiscountTotal > 0 && (
+                  <div className="flex justify-between text-amber-600 dark:text-amber-400 font-medium">
+                    <span className="flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" />
+                      <span>Campaign Savings:</span>
+                    </span>
+                    <span className="font-mono">-{campaignDiscountTotal.toFixed(2)} tk</span>
+                  </div>
+                )}
+                {extraDiscountAmount > 0 && (
                   <div className="flex justify-between text-emerald-600 font-medium">
-                    <span>Discount ({discountPercent}%):</span>
-                    <span className="font-mono">-{discountAmount.toFixed(2)} tk</span>
+                    <span>Manual Discount ({discountPercent}%):</span>
+                    <span className="font-mono">-{extraDiscountAmount.toFixed(2)} tk</span>
                   </div>
                 )}
                 <div className="flex justify-between border-t border-border/80 pt-1 text-base font-bold text-foreground">
@@ -520,7 +680,7 @@ export default function PosBillingPage() {
 
         {/* Right Side: Services Catalog (7 Cols) */}
         <div className="lg:col-span-7 rounded-xl border border-border bg-card p-4 shadow-sm space-y-4">
-          {/* Search & Category Filter */}
+          {/* Search & Dynamic Category Filter */}
           <div className="flex flex-col sm:flex-row gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -533,18 +693,32 @@ export default function PosBillingPage() {
               />
             </div>
             <div className="flex items-center gap-1 overflow-x-auto pb-1 sm:pb-0">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`rounded-lg px-2.5 py-1.5 text-[10px] font-semibold whitespace-nowrap transition-colors ${selectedCategory === cat
-                    ? 'bg-blue-600 text-white shadow-sm'
-                    : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-                    }`}
-                >
-                  {cat}
-                </button>
-              ))}
+              <button
+                onClick={() => setSelectedCategory('ALL')}
+                className={`rounded-lg px-2.5 py-1.5 text-[10px] font-semibold whitespace-nowrap transition-colors ${selectedCategory === 'ALL'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+              >
+                All Categories
+              </button>
+              {categories.map((cat: any) => {
+                const catCode = typeof cat === 'string' ? cat : cat.code;
+                const catName = typeof cat === 'string' ? cat : cat.name;
+                const catId = typeof cat === 'string' ? cat : cat.id;
+                return (
+                  <button
+                    key={catId}
+                    onClick={() => setSelectedCategory(catCode)}
+                    className={`rounded-lg px-2.5 py-1.5 text-[10px] font-semibold whitespace-nowrap transition-colors ${selectedCategory.toUpperCase() === catCode.toUpperCase()
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                      }`}
+                  >
+                    {catName}
+                  </button>
+                );
+              })}
             </div>
           </div>
 

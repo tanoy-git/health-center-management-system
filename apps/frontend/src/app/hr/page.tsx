@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/api';
+import { toast } from '@/components/Toast';
 import {
   Briefcase,
   Clock,
@@ -17,7 +18,13 @@ import {
   X,
   KeyRound,
   Lock,
+  Edit2,
 } from 'lucide-react';
+import DateRangeFilter, {
+  DateFilterValue,
+  getDefaultDateFilter,
+  filterMatchesDate,
+} from '@/components/DateRangeFilter';
 
 export default function HrPage() {
   const { activeCenter, hasPermission } = useAuth();
@@ -26,6 +33,7 @@ export default function HrPage() {
   const [employees, setEmployees] = useState<any[]>([]);
   const [attendances, setAttendances] = useState<any[]>([]);
   const [payrolls, setPayrolls] = useState<any[]>([]);
+  const [hrDateFilter, setHrDateFilter] = useState<DateFilterValue>(getDefaultDateFilter());
   const [monthYear, setMonthYear] = useState('2026-10');
   const [loading, setLoading] = useState(true);
 
@@ -35,6 +43,7 @@ export default function HrPage() {
   const [onboardForm, setOnboardForm] = useState({
     firstName: '',
     lastName: '',
+    userName: '',
     email: '',
     phone: '',
     roleId: '',
@@ -52,6 +61,22 @@ export default function HrPage() {
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetSuccess, setResetSuccess] = useState(false);
   const [resetSubmitting, setResetSubmitting] = useState(false);
+
+  // Edit Employee Modal State
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingEmployee, setEditingEmployee] = useState<any>(null);
+  const [editForm, setEditForm] = useState({
+    firstName: '',
+    lastName: '',
+    phone: '',
+    roleId: '',
+    employeeCode: '',
+    designation: '',
+    department: 'Clinical Medicine',
+    baseSalary: 5000,
+    status: 'ACTIVE',
+  });
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -88,9 +113,10 @@ export default function HrPage() {
         method: 'POST',
         body: JSON.stringify({ monthYear }),
       });
+      toast.success(`Payroll for ${monthYear} generated successfully`);
       loadData();
     } catch (err: any) {
-      alert(err.message || 'Failed to generate payroll');
+      toast.error(err.message || 'Failed to generate payroll');
     }
   };
 
@@ -99,9 +125,71 @@ export default function HrPage() {
       await apiRequest(`/hr/payroll/${payrollId}/pay`, {
         method: 'PATCH',
       });
+      toast.success('Payroll record marked as paid');
       loadData();
     } catch (err: any) {
-      alert(err.message || 'Failed to update payroll status');
+      toast.error(err.message || 'Failed to update payroll status');
+    }
+  };
+
+  const handleToggleEmployeeStatus = async (emp: any) => {
+    const newStatus = emp.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    const actionText = newStatus === 'ACTIVE' ? 'activate' : 'deactivate';
+    if (
+      !confirm(
+        `Are you sure you want to ${actionText} employee ${emp.user?.first_name} ${emp.user?.last_name}? ${
+          newStatus === 'INACTIVE'
+            ? 'They will be immediately logged out and unable to log into the system.'
+            : ''
+        }`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await apiRequest(`/hr/employees/${emp.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      toast.success(`Employee ${emp.user?.first_name} ${emp.user?.last_name} set to ${newStatus}`);
+      loadData();
+    } catch (err: any) {
+      toast.error(err.message || `Failed to ${actionText} employee`);
+    }
+  };
+
+  const handleOpenEdit = (emp: any) => {
+    setEditingEmployee(emp);
+    setEditForm({
+      firstName: emp.user?.first_name || '',
+      lastName: emp.user?.last_name || '',
+      phone: emp.user?.phone || '',
+      roleId: emp.user?.role?.id || (roles.length > 0 ? roles[0].id : ''),
+      employeeCode: emp.employee_code || '',
+      designation: emp.designation || '',
+      department: emp.department || 'Clinical Medicine',
+      baseSalary: Number(emp.base_salary) || 0,
+      status: emp.status || 'ACTIVE',
+    });
+    setEditModalOpen(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingEmployee) return;
+    setEditSubmitting(true);
+    try {
+      await apiRequest(`/hr/employees/${editingEmployee.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(editForm),
+      });
+      setEditModalOpen(false);
+      toast.success('Employee details updated successfully');
+      loadData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update employee details');
+    } finally {
+      setEditSubmitting(false);
     }
   };
 
@@ -128,6 +216,7 @@ export default function HrPage() {
         body: JSON.stringify({ newPassword: adminNewPassword }),
       });
       setResetSuccess(true);
+      toast.success(`Password reset successfully for ${targetEmployee.user?.first_name}`);
       setTimeout(() => {
         setResetModalOpen(false);
         setTargetEmployee(null);
@@ -150,11 +239,49 @@ export default function HrPage() {
         body: JSON.stringify(onboardForm),
       });
       setOnboardModalOpen(false);
+      setOnboardForm({
+        firstName: '',
+        lastName: '',
+        userName: '',
+        email: '',
+        phone: '',
+        roleId: roles.length > 0 ? roles[0].id : '',
+        employeeCode: '',
+        designation: '',
+        department: 'Clinical Medicine',
+        baseSalary: 5000,
+      });
+      toast.success('Employee onboarded successfully');
       loadData();
     } catch (err: any) {
-      alert(err.message || 'Failed to onboard employee');
+      toast.error(err.message || 'Failed to onboard employee');
     }
   };
+
+  useEffect(() => {
+    if (hrDateFilter.mode === 'monthly') {
+      const formatted = `${hrDateFilter.year}-${String(hrDateFilter.month).padStart(2, '0')}`;
+      if (formatted !== monthYear) {
+        setMonthYear(formatted);
+      }
+    }
+  }, [hrDateFilter]);
+
+  const filteredAttendances = attendances.filter((att) =>
+    filterMatchesDate(att.punch_in || att.created_at, hrDateFilter)
+  );
+
+  const filteredEmployees = employees.filter((emp) =>
+    filterMatchesDate(emp.created_at, hrDateFilter)
+  );
+
+  const filteredPayrolls = payrolls.filter((p) => {
+    if (hrDateFilter.mode === 'monthly') {
+      const filterMonthStr = `${hrDateFilter.year}-${String(hrDateFilter.month).padStart(2, '0')}`;
+      return p.month_year === filterMonthStr || filterMatchesDate(p.created_at, hrDateFilter);
+    }
+    return filterMatchesDate(p.created_at, hrDateFilter);
+  });
 
   return (
     <div className="space-y-6">
@@ -240,13 +367,24 @@ export default function HrPage() {
         </button>
       </div>
 
+      {/* Unified Date, Range, Monthly Filter */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-card border border-border p-3 rounded-xl shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Filter Records:</span>
+          <DateRangeFilter value={hrDateFilter} onChange={setHrDateFilter} />
+        </div>
+        <div className="text-xs text-muted-foreground">
+          Showing {activeTab === 'attendance' ? `${filteredAttendances.length} attendance record(s)` : activeTab === 'employees' ? `${filteredEmployees.length} employee(s)` : `${filteredPayrolls.length} salary slip(s)`}
+        </div>
+      </div>
+
       {/* Tab 1: Daily Attendance */}
       {activeTab === 'attendance' && (
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
           <div className="p-4 border-b border-border bg-muted/20 flex items-center justify-between">
             <div>
               <span className="text-xs font-semibold text-foreground">
-                Today's Attendance Timeline ({attendances.length})
+                Attendance Timeline ({filteredAttendances.length})
               </span>
               <p className="text-[11px] text-muted-foreground">
                 Automated attendance records created when employees log in to the system
@@ -261,14 +399,14 @@ export default function HrPage() {
             <div className="py-12 text-center text-xs text-muted-foreground">
               Loading attendance records...
             </div>
-          ) : attendances.length === 0 ? (
+          ) : filteredAttendances.length === 0 ? (
             <div className="py-16 text-center text-xs text-muted-foreground space-y-1">
               <Clock className="h-8 w-8 mx-auto text-muted-foreground opacity-30" />
               <p className="font-semibold text-foreground">
-                No Attendance Records Today Yet
+                No Attendance Records Found
               </p>
               <p className="text-[11px]">
-                When an employee logs into this branch, an attendance record is automatically triggered!
+                No punch-in events recorded for the selected filter period.
               </p>
             </div>
           ) : (
@@ -284,7 +422,7 @@ export default function HrPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {attendances.map((att) => (
+                  {filteredAttendances.map((att) => (
                     <tr key={att.id} className="hover:bg-muted/40 transition-colors">
                       <td className="py-3 px-4 font-semibold text-foreground">
                         {att.employee?.user?.first_name}{' '}
@@ -294,10 +432,12 @@ export default function HrPage() {
                         {att.employee?.designation}
                       </td>
                       <td className="py-3 px-4 font-mono text-muted-foreground">
-                        {new Date(att.punch_in).toLocaleTimeString([], {
+                        {new Date(att.punch_in).toLocaleString([], {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
                           hour: '2-digit',
                           minute: '2-digit',
-                          second: '2-digit',
                         })}
                       </td>
                       <td className="py-3 px-4">
@@ -325,7 +465,7 @@ export default function HrPage() {
         <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
           <div className="p-4 border-b border-border bg-muted/20">
             <span className="text-xs font-semibold text-foreground">
-              Employees Bound to {activeCenter?.name} ({employees.length})
+              Employees Bound to {activeCenter?.name} ({filteredEmployees.length})
             </span>
           </div>
 
@@ -343,7 +483,7 @@ export default function HrPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {employees.map((emp) => (
+                {filteredEmployees.map((emp) => (
                   <tr key={emp.id} className="hover:bg-muted/40 transition-colors">
                     <td className="py-3 px-4 font-mono font-bold text-blue-600 dark:text-blue-400">
                       {emp.employee_code}
@@ -352,9 +492,10 @@ export default function HrPage() {
                       <p className="font-semibold text-foreground">
                         {emp.user?.first_name} {emp.user?.last_name}
                       </p>
-                      <span className="text-[10px] text-muted-foreground">
-                        {emp.user?.email}
-                      </span>
+                      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                        <span className="font-mono text-primary font-medium">@{emp.user?.userName || emp.user?.username || 'user'}</span>
+                        {emp.user?.email && <span>• {emp.user.email}</span>}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-foreground font-medium">
                       {emp.designation}
@@ -363,32 +504,65 @@ export default function HrPage() {
                       {emp.department}
                     </td>
                     <td className="py-3 px-4 font-mono font-bold text-foreground">
-                      ${Number(emp.base_salary).toFixed(2)}
+                      tk {Number(emp.base_salary).toLocaleString()}
                     </td>
                     <td className="py-3 px-4">
-                      <span className="rounded bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
+                      <span
+                        className={`rounded px-2 py-0.5 text-[10px] font-bold ${
+                          emp.status === 'ACTIVE'
+                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300'
+                        }`}
+                      >
                         {emp.status}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right">
-                      {emp.user?.id && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTargetEmployee(emp);
-                            setResetError(null);
-                            setResetSuccess(false);
-                            setAdminNewPassword('');
-                            setAdminConfirmPassword('');
-                            setResetModalOpen(true);
-                          }}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card hover:bg-muted px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors shadow-sm"
-                          title="Reset employee password"
-                        >
-                          <KeyRound className="h-3 w-3 text-blue-600 dark:text-blue-400" />
-                          <span>Reset Password</span>
-                        </button>
-                      )}
+                      <div className="flex items-center justify-end gap-1.5">
+                        {hasPermission('hr:employees:write') && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(emp)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-border bg-card hover:bg-muted px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors shadow-sm"
+                            title="Edit employee details"
+                          >
+                            <Edit2 className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                            <span>Edit</span>
+                          </button>
+                        )}
+                        {hasPermission('hr:employees:write') && emp.user?.role?.name !== 'SUPER_ADMIN' && (
+                          <button
+                            type="button"
+                            onClick={() => handleToggleEmployeeStatus(emp)}
+                            className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors shadow-sm ${
+                              emp.status === 'ACTIVE'
+                                ? 'border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100'
+                                : 'border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100'
+                            }`}
+                            title={emp.status === 'ACTIVE' ? 'Deactivate employee' : 'Activate employee'}
+                          >
+                            <span>{emp.status === 'ACTIVE' ? 'Deactivate' : 'Activate'}</span>
+                          </button>
+                        )}
+                        {emp.user?.id && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTargetEmployee(emp);
+                              setResetError(null);
+                              setResetSuccess(false);
+                              setAdminNewPassword('');
+                              setAdminConfirmPassword('');
+                              setResetModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card hover:bg-muted px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors shadow-sm"
+                            title="Reset employee password"
+                          >
+                            <KeyRound className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+                            <span>Reset Password</span>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -404,7 +578,7 @@ export default function HrPage() {
           <div className="p-4 border-b border-border bg-muted/20 flex items-center justify-between">
             <div>
               <span className="text-xs font-semibold text-foreground">
-                Salary Slips for Month {monthYear} ({payrolls.length})
+                Salary Slips for Month {monthYear} ({filteredPayrolls.length})
               </span>
               <p className="text-[11px] text-muted-foreground">
                 Calculated dynamically based on employee attendance records and base pay
@@ -412,7 +586,7 @@ export default function HrPage() {
             </div>
           </div>
 
-          {payrolls.length === 0 ? (
+          {filteredPayrolls.length === 0 ? (
             <div className="py-16 text-center text-xs text-muted-foreground space-y-2">
               <DollarSign className="h-8 w-8 mx-auto text-muted-foreground opacity-30" />
               <p className="font-semibold text-foreground">
@@ -437,7 +611,7 @@ export default function HrPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {payrolls.map((p) => {
+                  {filteredPayrolls.map((p) => {
                     const isPaid = p.status === 'PAID';
                     return (
                       <tr key={p.id} className="hover:bg-muted/40 transition-colors">
@@ -457,10 +631,10 @@ export default function HrPage() {
                           {p.total_present_days} days
                         </td>
                         <td className="py-3 px-4 font-mono text-muted-foreground">
-                          ${Number(p.base_salary).toFixed(2)}
+                          tk {Number(p.base_salary).toLocaleString()}
                         </td>
                         <td className="py-3 px-4 font-mono font-bold text-foreground text-sm">
-                          ${Number(p.net_salary).toFixed(2)}
+                          tk {Number(p.net_salary).toLocaleString()}
                         </td>
                         <td className="py-3 px-4">
                           <span
@@ -543,15 +717,18 @@ export default function HrPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-semibold text-foreground">Email *</label>
+                  <label className="font-semibold text-foreground">
+                    Username (userName) *
+                  </label>
                   <input
-                    type="email"
+                    type="text"
                     required
-                    value={onboardForm.email}
+                    value={onboardForm.userName}
                     onChange={(e) =>
-                      setOnboardForm({ ...onboardForm, email: e.target.value })
+                      setOnboardForm({ ...onboardForm, userName: e.target.value.trim().toLowerCase() })
                     }
-                    className="w-full rounded border border-input bg-background p-2 outline-none"
+                    placeholder="e.g. john.doe"
+                    className="w-full rounded border border-input bg-background p-2 font-mono outline-none"
                   />
                 </div>
                 <div className="space-y-1">
@@ -570,6 +747,37 @@ export default function HrPage() {
                     }
                     placeholder="EMP-0301"
                     className="w-full rounded border border-input bg-background p-2 font-mono outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">
+                    Email (Optional)
+                  </label>
+                  <input
+                    type="email"
+                    value={onboardForm.email}
+                    onChange={(e) =>
+                      setOnboardForm({ ...onboardForm, email: e.target.value })
+                    }
+                    placeholder="john.doe@aegis.health"
+                    className="w-full rounded border border-input bg-background p-2 outline-none"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">
+                    Phone (Optional)
+                  </label>
+                  <input
+                    type="tel"
+                    value={onboardForm.phone}
+                    onChange={(e) =>
+                      setOnboardForm({ ...onboardForm, phone: e.target.value })
+                    }
+                    placeholder="+880 1700-000000"
+                    className="w-full rounded border border-input bg-background p-2 outline-none"
                   />
                 </div>
               </div>
@@ -758,6 +966,195 @@ export default function HrPage() {
                   className="rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
                 >
                   {resetSubmitting ? 'Updating...' : 'Set New Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Employee Modal */}
+      {editModalOpen && editingEmployee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 shadow-2xl space-y-4 animate-in fade-in">
+            <div className="flex items-center justify-between border-b border-border pb-3">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600">
+                  <Edit2 className="h-4 w-4" />
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold text-foreground">
+                    Edit Employee Information
+                  </h2>
+                  <p className="text-[10px] text-muted-foreground font-mono">
+                    {editingEmployee.employee_code} • {editingEmployee.user?.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditModalOpen(false)}
+                className="rounded p-1 text-muted-foreground hover:bg-muted"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">First Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.firstName}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, firstName: e.target.value })
+                    }
+                    className="w-full rounded border border-input bg-background p-2 outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">Last Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.lastName}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, lastName: e.target.value })
+                    }
+                    className="w-full rounded border border-input bg-background p-2 outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">
+                    Employee Code *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.employeeCode}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, employeeCode: e.target.value })
+                    }
+                    className="w-full rounded border border-input bg-background p-2 font-mono outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">Phone Number</label>
+                  <input
+                    type="text"
+                    value={editForm.phone}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, phone: e.target.value })
+                    }
+                    placeholder="+1 555-0100"
+                    className="w-full rounded border border-input bg-background p-2 outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">
+                    System Role *
+                  </label>
+                  <select
+                    value={editForm.roleId}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, roleId: e.target.value })
+                    }
+                    className="w-full rounded border border-input bg-background p-2 font-medium outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    {roles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">
+                    Department *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.department}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, department: e.target.value })
+                    }
+                    className="w-full rounded border border-input bg-background p-2 outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">
+                    Designation *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editForm.designation}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, designation: e.target.value })
+                    }
+                    className="w-full rounded border border-input bg-background p-2 outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-semibold text-foreground">
+                    Base Salary ($/month) *
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={editForm.baseSalary}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        baseSalary: parseFloat(e.target.value) || 0,
+                      })
+                    }
+                    className="w-full rounded border border-input bg-background p-2 font-mono outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-semibold text-foreground">Account Status *</label>
+                <select
+                  value={editForm.status}
+                  onChange={(e) =>
+                    setEditForm({ ...editForm, status: e.target.value })
+                  }
+                  className="w-full rounded border border-input bg-background p-2 font-medium outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="ACTIVE">ACTIVE (Allowed to login)</option>
+                  <option value="INACTIVE">INACTIVE (Blocked from login)</option>
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setEditModalOpen(false)}
+                  disabled={editSubmitting}
+                  className="rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:bg-muted"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white shadow-sm disabled:opacity-50"
+                >
+                  {editSubmitting ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             </form>

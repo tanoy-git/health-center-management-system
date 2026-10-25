@@ -4,7 +4,7 @@ import * as bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('--- Seeding Aegis Enterprise HIS v2.0 Database ---');
+  console.log('--- Seeding Health Center Management System v2.0 Database ---');
 
   // 1. Create Centers
   const centerA = await prisma.center.upsert({
@@ -42,7 +42,7 @@ async function main() {
     { code: 'iam:users:write', name: 'Manage Users', module: 'IAM', description: 'Can create and edit users' },
     { code: 'iam:roles:manage', name: 'Manage Roles & RBAC', module: 'IAM', description: 'Can configure dynamic roles & permissions' },
     { code: 'center:manage', name: 'Manage Centers', module: 'IAM', description: 'Can register and configure physical hospital centers' },
-    
+
     // HR & Attendance & Payroll
     { code: 'hr:employees:read', name: 'View Employees', module: 'HR', description: 'Can view employee registry' },
     { code: 'hr:employees:write', name: 'Manage Employees', module: 'HR', description: 'Can onboard and edit employee records' },
@@ -61,16 +61,21 @@ async function main() {
     { code: 'billing:invoices:create', name: 'Create Invoices', module: 'BILLING', description: 'Can checkout cart and issue bills' },
     { code: 'billing:invoices:override', name: 'Override Discounts', module: 'BILLING', description: 'Can apply custom discount overrides' },
     { code: 'billing:services:manage', name: 'Manage Service Catalog', module: 'BILLING', description: 'Can add and update billable hospital services' },
+    { code: 'billing:refund:manage', name: 'Manage Invoice Refunds', module: 'BILLING', description: 'Can process same-day invoice item refunds' },
 
     // Clinical & Prescription
     { code: 'clinical:prescription:read', name: 'View Prescriptions', module: 'CLINICAL', description: 'Can view patient prescriptions' },
     { code: 'clinical:prescription:write', name: 'Write Prescriptions', module: 'CLINICAL', description: 'Can generate doctor prescriptions with PDF' },
+    { code: 'clinical:eye:prescription', name: 'Manage Eye Prescriptions', module: 'CLINICAL', description: 'Can perform eye examinations and generate eye prescriptions' },
     { code: 'clinical:medicines:manage', name: 'Manage Pharmacy Catalog', module: 'CLINICAL', description: 'Can update medicine inventory' },
 
     // Diagnostics & Reports
     { code: 'diagnostics:reports:read', name: 'View Diagnostic Reports', module: 'DIAGNOSTICS', description: 'Can view Lab/USG reports' },
     { code: 'diagnostics:reports:write', name: 'Create Lab/USG Reports', module: 'DIAGNOSTICS', description: 'Can enter test findings and upload DICOM/images' },
     { code: 'diagnostics:reports:signoff', name: 'Sign-off Reports', module: 'DIAGNOSTICS', description: 'Pathologist digital sign-off authority' },
+
+    // Analytics & System Reports
+    { code: 'reports:view', name: 'View System Analytics & Reports', module: 'REPORTS', description: 'Can view monthly financial, clinical and operational reports' },
   ];
 
   const dbPermissions = [];
@@ -217,8 +222,13 @@ async function main() {
   // Super Admin
   const adminUser = await prisma.user.upsert({
     where: { email: 'admin@aegis.health' },
-    update: {},
+    update: {
+      userName: 'admin',
+      password_hash: passwordHash,
+      status: 'ACTIVE',
+    },
     create: {
+      userName: 'admin',
       email: 'admin@aegis.health',
       password_hash: passwordHash,
       first_name: 'Alexander',
@@ -247,8 +257,13 @@ async function main() {
   // Doctor at Center A (Metro Central)
   const doctorMetroUser = await prisma.user.upsert({
     where: { email: 'dr.marcus@aegis.health' },
-    update: {},
+    update: {
+      userName: 'dr.marcus',
+      password_hash: staffPasswordHash,
+      status: 'ACTIVE',
+    },
     create: {
+      userName: 'dr.marcus',
       email: 'dr.marcus@aegis.health',
       password_hash: staffPasswordHash,
       first_name: 'Marcus',
@@ -277,8 +292,13 @@ async function main() {
   // Cashier at Center A
   const cashierMetroUser = await prisma.user.upsert({
     where: { email: 'cashier.metro@aegis.health' },
-    update: {},
+    update: {
+      userName: 'cashier.metro',
+      password_hash: staffPasswordHash,
+      status: 'ACTIVE',
+    },
     create: {
+      userName: 'cashier.metro',
       email: 'cashier.metro@aegis.health',
       password_hash: staffPasswordHash,
       first_name: 'Elena',
@@ -307,8 +327,13 @@ async function main() {
   // Doctor at Center B (Westside)
   const doctorWestUser = await prisma.user.upsert({
     where: { email: 'dr.sarah@aegis.health' },
-    update: {},
+    update: {
+      userName: 'dr.sarah',
+      password_hash: staffPasswordHash,
+      status: 'ACTIVE',
+    },
     create: {
+      userName: 'dr.sarah',
       email: 'dr.sarah@aegis.health',
       password_hash: staffPasswordHash,
       first_name: 'Sarah',
@@ -334,7 +359,49 @@ async function main() {
     },
   });
 
-  // 5. Seed Services Catalog for Center A & Center B
+  // Populate userName for any existing users without one
+  try {
+    const usersWithoutUserName = await prisma.user.findMany({
+      where: { userName: null },
+    });
+    for (const u of usersWithoutUserName) {
+      const fallback = u.email ? u.email.split('@')[0] : `user_${u.id.substring(0, 5)}`;
+      await prisma.user.update({
+        where: { id: u.id },
+        data: { userName: fallback },
+      });
+      console.log(`Updated user ${u.id} with userName: ${fallback}`);
+    }
+  } catch (err) {
+    console.warn('Could not backfill userName for existing users:', err);
+  }
+
+  // 5. Seed Dynamic Service Categories Table
+  const sampleCategories = [
+    { code: 'CONSULTATION', name: 'Doctor Consultation', description: 'General & specialist doctor OPD consultations' },
+    { code: 'USG', name: 'Ultrasonography (USG)', description: 'Abdominal, pelvic, pregnancy, and vascular ultrasound scans' },
+    { code: 'PROCEDURE', name: 'Clinical Procedures', description: 'ECG, dressing, minor OT procedures, catheterization' },
+    { code: 'LAB_TEST', name: 'Laboratory Diagnostics', description: 'Clinical pathology, hematology, biochemistry, microbiology' },
+    { code: 'RADIOLOGY', name: 'Radiology & Imaging', description: 'X-Ray, CT, fluoroscopy' },
+    { code: 'EYE', name: 'Ophthalmology & Vision', description: 'Refraction test, slit lamp exam, eye pressure check' },
+  ];
+
+  const categoryMap = new Map<string, string>();
+  for (const cat of sampleCategories) {
+    const c = await prisma.serviceCategory.upsert({
+      where: { code: cat.code },
+      update: { name: cat.name, description: cat.description, status: 'ACTIVE' },
+      create: {
+        code: cat.code,
+        name: cat.name,
+        description: cat.description,
+        status: 'ACTIVE',
+      },
+    });
+    categoryMap.set(cat.code, c.id);
+  }
+
+  // 5.1 Seed Services Catalog for Center A & Center B
   const sampleServices = [
     { code: 'SRV-CONS-01', name: 'General Physician Consultation', category: 'CONSULTATION', price: 50.0, tax_rate: 0 },
     { code: 'SRV-CONS-02', name: 'Specialist Cardiology Consultation', category: 'CONSULTATION', price: 120.0, tax_rate: 0 },
@@ -345,30 +412,62 @@ async function main() {
     { code: 'SRV-RAD-02', name: 'Digital Chest X-Ray (PA View)', category: 'RADIOLOGY', price: 75.0, tax_rate: 0 },
     { code: 'SRV-PROC-01', name: '12-Lead Electrocardiogram (ECG)', category: 'PROCEDURE', price: 55.0, tax_rate: 0 },
     { code: 'SRV-PROC-02', name: 'Wound Dressing & Minor Surgical Care', category: 'PROCEDURE', price: 65.0, tax_rate: 0 },
+    { code: 'SRV-EYE-01', name: 'Comprehensive Eye Examination & Vision Test', category: 'EYE', price: 60.0, tax_rate: 0 },
+    { code: 'SRV-EYE-02', name: 'Computerized Refraction & Glass Power Test', category: 'EYE', price: 40.0, tax_rate: 0 },
+    { code: 'SRV-EYE-03', name: 'Slit Lamp Biomicroscopy & Retinal Exam', category: 'EYE', price: 90.0, tax_rate: 0 },
   ];
 
-  for (const center of [centerA, centerB]) {
-    for (const s of sampleServices) {
-      await prisma.serviceCatalog.upsert({
-        where: {
-          center_id_code: {
-            center_id: center.id,
-            code: s.code,
-          },
-        },
-        update: { name: s.name, category: s.category, price: s.price, tax_rate: s.tax_rate },
-        create: {
-          center_id: center.id,
-          code: s.code,
-          name: s.name,
-          category: s.category,
-          price: s.price,
-          tax_rate: s.tax_rate,
-          status: 'ACTIVE',
-        },
-      });
-    }
+  // 5.1 Seed Global Services Catalog
+  for (const s of sampleServices) {
+    await prisma.serviceCatalog.upsert({
+      where: { code: s.code },
+      update: {
+        name: s.name,
+        category: s.category,
+        category_id: categoryMap.get(s.category),
+        price: s.price,
+        tax_rate: s.tax_rate,
+      },
+      create: {
+        code: s.code,
+        name: s.name,
+        category: s.category,
+        category_id: categoryMap.get(s.category),
+        price: s.price,
+        tax_rate: s.tax_rate,
+        status: 'ACTIVE',
+      },
+    });
   }
+
+  // 5.2 Seed Sample Discount Campaign (60+ Male Patient Discount)
+  const usgCatId = categoryMap.get('USG');
+  await prisma.discountCampaign.upsert({
+    where: { id: 'campaign-senior-male-60' },
+    update: {
+      name: 'Senior Citizen Male Privilege (60+ Yrs)',
+      code: 'SENIOR60',
+      description: '15% automatic discount for all male patients aged 60 and above on USG and clinical consultations',
+      discount_type: 'PERCENTAGE',
+      discount_value: 15.0,
+      min_age: 60,
+      max_age: 120,
+      gender: 'MALE',
+      status: 'ACTIVE',
+    },
+    create: {
+      id: 'campaign-senior-male-60',
+      name: 'Senior Citizen Male Privilege (60+ Yrs)',
+      code: 'SENIOR60',
+      description: '15% automatic discount for all male patients aged 60 and above on USG and clinical consultations',
+      discount_type: 'PERCENTAGE',
+      discount_value: 15.0,
+      min_age: 60,
+      max_age: 120,
+      gender: 'MALE',
+      status: 'ACTIVE',
+    },
+  });
 
   // 6. Seed Medicines
   const sampleMedicines = [

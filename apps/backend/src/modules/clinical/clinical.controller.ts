@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Put,
+  Delete,
   Body,
   Param,
   Query,
@@ -25,15 +27,16 @@ import {
 @Controller('clinical')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ClinicalController {
-  constructor(private readonly clinicalService: ClinicalService) {}
+  constructor(private readonly clinicalService: ClinicalService) { }
 
   @Get('medicines')
   @RequirePermissions('clinical:prescription:read')
   async getMedicines(
     @CurrentTenant() centerId: string,
     @Query('search') search?: string,
+    @Query('status') status?: string,
   ) {
-    return this.clinicalService.getMedicines(centerId, search);
+    return this.clinicalService.getMedicines(centerId, search, status);
   }
 
   @Post('medicines')
@@ -44,6 +47,27 @@ export class ClinicalController {
     @CurrentUser('id') userId: string,
   ) {
     return this.clinicalService.createMedicine(centerId, body, userId);
+  }
+
+  @Put('medicines/:id')
+  @RequirePermissions('clinical:medicines:manage')
+  async updateMedicine(
+    @Param('id') id: string,
+    @CurrentTenant() centerId: string,
+    @Body() body: Partial<CreateMedicineDto> & { status?: string; reorderLevel?: number },
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.clinicalService.updateMedicine(id, centerId, body, userId);
+  }
+
+  @Delete('medicines/:id')
+  @RequirePermissions('clinical:medicines:manage')
+  async deleteMedicine(
+    @Param('id') id: string,
+    @CurrentTenant() centerId: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.clinicalService.deleteMedicine(id, centerId, userId);
   }
 
   @Get('queue')
@@ -74,13 +98,37 @@ export class ClinicalController {
     return this.clinicalService.createPrescription(centerId, doctorId, body);
   }
 
+  @Put('prescriptions/:id')
+  @RequirePermissions('clinical:prescription:write')
+  async updatePrescription(
+    @Param('id') id: string,
+    @CurrentTenant() centerId: string,
+    @CurrentUser('id') userId: string,
+    @Body() body: any,
+  ) {
+    return this.clinicalService.updatePrescription(id, centerId, userId, body);
+  }
+
   @Get('prescriptions')
   @RequirePermissions('clinical:prescription:read')
   async getPrescriptions(
     @CurrentTenant() centerId: string,
     @Query('patientId') patientId?: string,
+    @Query('doctorId') doctorId?: string,
+    @Query('search') search?: string,
+    @Query('prescriptionType') prescriptionType?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
-    return this.clinicalService.getPrescriptions(centerId, patientId);
+    return this.clinicalService.getPrescriptions(
+      centerId,
+      patientId,
+      doctorId,
+      search,
+      prescriptionType,
+      startDate,
+      endDate,
+    );
   }
 
   @Get('prescriptions/:id')

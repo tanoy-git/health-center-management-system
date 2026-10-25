@@ -1,4 +1,12 @@
-const API_BASE = '/api/v1';
+function getApiBase(): string {
+  if (typeof window !== 'undefined') {
+    const publicUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (publicUrl && publicUrl.trim() && !publicUrl.includes('localhost:4000')) {
+      return `${publicUrl.replace(/\/$/, '')}/api/v1`;
+    }
+  }
+  return '/api/v1';
+}
 
 export class ApiError extends Error {
   status: number;
@@ -34,7 +42,8 @@ export async function apiRequest<T = any>(
     headers['x-center-id'] = activeCenterId;
   }
 
-  const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  const apiBase = getApiBase();
+  const url = `${apiBase}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
 
   const response = await fetch(url, {
     ...options,
@@ -42,6 +51,14 @@ export async function apiRequest<T = any>(
   });
 
   if (response.status === 401) {
+    let errorMsg = 'Unauthorized session';
+    let data: any = null;
+    try {
+      data = await response.json();
+      errorMsg = data?.message || errorMsg;
+      if (Array.isArray(errorMsg)) errorMsg = errorMsg.join(', ');
+    } catch {}
+
     if (typeof window !== 'undefined') {
       localStorage.removeItem('aegis_token');
       localStorage.removeItem('aegis_user');
@@ -49,7 +66,7 @@ export async function apiRequest<T = any>(
         window.location.href = '/login';
       }
     }
-    throw new ApiError('Unauthorized session', 401);
+    throw new ApiError(errorMsg, 401, data);
   }
 
   const contentType = response.headers.get('content-type');

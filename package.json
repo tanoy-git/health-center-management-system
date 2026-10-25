@@ -14,8 +14,10 @@
     "docker:postgres": "docker compose up -d postgres",
     "docker:down": "docker compose down",
     "prisma:generate": "npm --workspace=apps/backend run prisma:generate",
+    "prisma:push": "npm --workspace=apps/backend run prisma:push",
     "prisma:migrate": "npm --workspace=apps/backend run prisma:migrate",
-    "prisma:seed": "npm --workspace=apps/backend run prisma:seed"
+    "prisma:seed": "npm --workspace=apps/backend run prisma:seed",
+    "db:sync": "npm --workspace=apps/backend run db:sync"
   },
   "devDependencies": {
     "typescript": "^5.3.3"

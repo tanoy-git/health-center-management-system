@@ -128,7 +128,13 @@ export default function A4InvoiceModal({
               {invoice.items?.map((item: any, idx: number) => (
                 <tr key={item.id || idx}>
                   <td className="py-2.5 font-medium text-slate-900">
-                    {item.item_name}
+                    <div>{item.item_name}</div>
+                    {(item.discount_campaign || item.discount_campaign_id || (Number(item.discount_amount) > 0)) && (
+                      <div className="text-[10px] text-amber-700 font-semibold flex items-center gap-1 mt-0.5">
+                        <span>Campaign: {item.discount_campaign?.name || 'Privilege Discount'}</span>
+                        <span>(-{Number(item.discount_amount || 0).toFixed(2)} tk)</span>
+                      </div>
+                    )}
                   </td>
                   <td className="py-2.5 text-center text-slate-500 text-[11px]">
                     {item.category}
@@ -137,10 +143,10 @@ export default function A4InvoiceModal({
                     {item.quantity}
                   </td>
                   <td className="py-2.5 text-right text-slate-700 font-mono">
-                    ${Number(item.unit_price).toFixed(2)}
+                    {Number(item.unit_price).toFixed(2)} tk
                   </td>
                   <td className="py-2.5 text-right font-bold text-slate-900 font-mono">
-                    ${Number(item.total_price).toFixed(2)}
+                    {Number(item.total_price).toFixed(2)} tk
                   </td>
                 </tr>
               ))}
@@ -152,30 +158,30 @@ export default function A4InvoiceModal({
             <div className="w-64 space-y-1.5 text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>Subtotal:</span>
-                <span className="font-mono font-medium">${Number(invoice.subtotal).toFixed(2)}</span>
+                <span className="font-mono font-medium">{Number(invoice.subtotal).toFixed(2)} tk</span>
               </div>
               {Number(invoice.discount_amount) > 0 && (
                 <div className="flex justify-between text-emerald-600">
                   <span>Discount:</span>
-                  <span className="font-mono font-medium">-${Number(invoice.discount_amount).toFixed(2)}</span>
+                  <span className="font-mono font-medium">-{Number(invoice.discount_amount).toFixed(2)} tk</span>
                 </div>
               )}
               <div className="flex justify-between text-slate-600">
                 <span>Tax:</span>
-                <span className="font-mono font-medium">${Number(invoice.tax_amount || 0).toFixed(2)}</span>
+                <span className="font-mono font-medium">{Number(invoice.tax_amount || 0).toFixed(2)} tk</span>
               </div>
               <div className="flex justify-between border-t border-slate-300 pt-1.5 text-sm font-bold text-slate-900">
                 <span>Total Amount:</span>
-                <span className="font-mono">${Number(invoice.total_amount).toFixed(2)}</span>
+                <span className="font-mono">{Number(invoice.total_amount).toFixed(2)} tk</span>
               </div>
               <div className="flex justify-between text-slate-700">
                 <span>Paid Amount:</span>
-                <span className="font-mono font-semibold">${Number(invoice.paid_amount).toFixed(2)}</span>
+                <span className="font-mono font-semibold">{Number(invoice.paid_amount).toFixed(2)} tk</span>
               </div>
               {Number(invoice.balance_amount) > 0 && (
                 <div className="flex justify-between text-red-600 font-bold">
                   <span>Balance Due:</span>
-                  <span className="font-mono">${Number(invoice.balance_amount).toFixed(2)}</span>
+                  <span className="font-mono">{Number(invoice.balance_amount).toFixed(2)} tk</span>
                 </div>
               )}
             </div>
@@ -183,7 +189,7 @@ export default function A4InvoiceModal({
 
           {/* Footer Notes */}
           <div className="border-t border-slate-200 pt-4 flex items-center justify-between text-[10px] text-slate-400">
-            <span>Aegis Enterprise HIS v2.0 - Certified Electronic Billing Record</span>
+            <span>CareWave EMR v2.0 - Certified Electronic Billing Record</span>
             <span>Computer Generated Invoice - No physical signature required</span>
           </div>
         </div>

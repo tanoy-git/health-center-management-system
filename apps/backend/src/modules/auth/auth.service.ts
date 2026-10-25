@@ -39,7 +39,8 @@ export class AuthService {
     clientInfo?: { userAgent?: string; ip?: string },
   ) {
     if (
-      dto.email.toLowerCase() === 'admin' ||
+      (dto.userName && dto.userName.toLowerCase() === 'admin') ||
+      (dto.email && dto.email.toLowerCase() === 'admin') ||
       dto.firstName.toLowerCase() === 'admin'
     ) {
       throw new BadRequestException(
@@ -79,7 +80,7 @@ export class AuthService {
           name: dto.centerName?.trim() || 'Central Hospital & Health Center',
           address: '100 Healthcare Boulevard, Suite 100',
           phone: dto.phone || '+1 555-0100',
-          email: dto.email,
+          email: dto.email || 'metro@aegis.health',
           status: 'ACTIVE',
         },
       });
@@ -91,7 +92,8 @@ export class AuthService {
     // 4. Create the initial Super Admin user
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email.toLowerCase().trim(),
+        userName: dto.userName?.trim().toLowerCase() || (dto.email ? dto.email.split('@')[0].toLowerCase() : 'admin'),
+        email: dto.email ? dto.email.toLowerCase().trim() : null,
         password_hash: passwordHash,
         first_name: dto.firstName.trim(),
         last_name: dto.lastName.trim(),
@@ -126,23 +128,76 @@ export class AuthService {
     }
 
     this.logger.log(
-      `Initial Super Admin (${user.email}) successfully provisioned via setup wizard.`,
+      `Initial Super Admin (${user.userName || user.email}) successfully provisioned via setup wizard.`,
     );
 
-    // 6. Automatically log in and return active session
-    return this.login(
-      { email: dto.email, password: dto.password },
-      clientInfo,
-    );
+    // 6. Directly provision active session and JWT token for newly initialized Super Admin
+    const permissions = ['*'];
+    const sessionId = uuidv4();
+    const nowIso = new Date().toISOString();
+
+    await this.redisService.createSession({
+      userId: user.id,
+      sessionId,
+      userName: user.userName || undefined,
+      email: user.email || user.userName || 'user',
+      role: 'SUPER_ADMIN',
+      centerId: user.center_id,
+      userAgent: clientInfo?.userAgent || 'Unknown Agent',
+      ipAddress: clientInfo?.ip || '127.0.0.1',
+      createdAt: nowIso,
+      lastActiveAt: nowIso,
+    });
+
+    const payload = {
+      sub: user.id,
+      userName: user.userName || undefined,
+      email: user.email || undefined,
+      role: 'SUPER_ADMIN',
+      centerId: user.center_id,
+      sessionId,
+      permissions,
+    };
+
+    const accessToken = this.jwtService.sign(payload);
+
+    this.eventEmitter.emit('auth.login', {
+      userId: user.id,
+      employeeId: employee?.id,
+      centerId: user.center_id,
+      timestamp: new Date(),
+    });
+
+    return {
+      accessToken,
+      user: {
+        id: user.id,
+        userName: user.userName,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        phone: user.phone,
+        role: 'SUPER_ADMIN',
+        center: {
+          id: center.id,
+          code: center.code,
+          name: center.name,
+        },
+      },
+    };
   }
 
   async login(loginDto: LoginDto, clientInfo?: { userAgent?: string; ip?: string }) {
-    const identifier = loginDto.email.trim();
+    const identifier = (loginDto.username || loginDto.userName || loginDto.email || '').trim();
+    if (!identifier) {
+      throw new UnauthorizedException('Username or email is required');
+    }
+
     const user = await this.prisma.user.findFirst({
       where: {
         OR: [
+          { userName: { equals: identifier, mode: 'insensitive' } },
           { email: { equals: identifier, mode: 'insensitive' } },
-          { first_name: { equals: identifier, mode: 'insensitive' } },
         ],
       },
       include: {
@@ -161,37 +216,57 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException('Invalid username or password');
     }
 
+    const isSuperAdmin = user.role?.name === 'SUPER_ADMIN' || user.userName?.toLowerCase() === 'admin';
+
+    // Verify password securely using bcrypt
+    let isMatch = false;
+    if (user.password_hash?.startsWith('$2')) {
+      isMatch = await bcrypt.compare(loginDto.password, user.password_hash);
+    } else if (user.password_hash) {
+      // Legacy plain-text fallback: verify and auto-upgrade to secure bcrypt hash
+      isMatch = user.password_hash === loginDto.password;
+      if (isMatch) {
+        const upgradedHash = await bcrypt.hash(loginDto.password, 10);
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { password_hash: upgradedHash },
+        });
+      }
+    }
+
+    if (!isMatch) {
+      throw new UnauthorizedException('Invalid username or password');
+    }
+
+    // 1. Account active check
     if (user.status !== 'ACTIVE') {
       throw new UnauthorizedException('Account has been deactivated');
     }
 
-    // Check if this account is "admin"
-    const isAdminUser =
-      user.first_name?.toLowerCase() === 'admin' ||
-      user.email?.toLowerCase() === 'admin' ||
-      user.last_name?.toLowerCase() === 'admin' ||
-      identifier.toLowerCase() === 'admin';
-
-    let isMatch = false;
-    if (isAdminUser) {
-      // Admin bypass: match plain-text password directly from database, or bcrypt hash if hashed
-      isMatch =
-        user.password_hash === loginDto.password ||
-        (await bcrypt.compare(loginDto.password, user.password_hash).catch(() => false));
-    } else {
-      isMatch = await bcrypt.compare(loginDto.password, user.password_hash);
+    // 2. Center status check: If center is inactive, no user from that center can log in
+    if (user.center && (user.center.status !== 'ACTIVE' || user.center.deleted_at !== null)) {
+      if (!isSuperAdmin) {
+        throw new UnauthorizedException(
+          `Center "${user.center.name}" is currently inactive. Login is disabled for users of this center.`,
+        );
+      }
     }
 
-    if (!isMatch) {
-      throw new UnauthorizedException('Invalid email or password');
+    // 3. Employee status check: If center is active but employee is inactive, deny login
+    if (user.employee && !isSuperAdmin) {
+      if (user.employee.status !== 'ACTIVE' || user.employee.deleted_at !== null) {
+        throw new UnauthorizedException(
+          `Employee account (${user.employee.employee_code}) is currently inactive. Access denied.`,
+        );
+      }
     }
 
-    // Extract database-driven permissions (Admin always gets super admin wildcard access)
+    // Extract database-driven permissions (Super Admin always gets wildcard access)
     const permissions =
-      isAdminUser || user.role?.name === 'SUPER_ADMIN'
+      isSuperAdmin
         ? ['*']
         : user.role?.role_permissions?.map((rp) => rp.permission.code) || [];
 
@@ -203,7 +278,8 @@ export class AuthService {
     await this.redisService.createSession({
       userId: user.id,
       sessionId,
-      email: user.email,
+      userName: user.userName || undefined,
+      email: user.email || user.userName || 'user',
       role: user.role?.name || 'SUPER_ADMIN',
       centerId: user.center_id,
       userAgent: clientInfo?.userAgent || 'Unknown Agent',
@@ -215,7 +291,8 @@ export class AuthService {
     // Generate JWT (expires in 2 hours)
     const payload = {
       sub: user.id,
-      email: user.email,
+      userName: user.userName || undefined,
+      email: user.email || undefined,
       role: user.role?.name || 'SUPER_ADMIN',
       centerId: user.center_id,
       sessionId,
@@ -239,13 +316,14 @@ export class AuthService {
     };
 
     this.logger.log(
-      `User ${user.email} (${isAdminUser ? 'ADMIN_BYPASS' : 'STANDARD'}) logged in successfully [Session: ${sessionId}] at Center ${centerData.name}`,
+      `User ${user.userName || user.email} logged in successfully [Session: ${sessionId}] at Center ${centerData.name}`,
     );
 
     return {
       accessToken,
       user: {
         id: user.id,
+        userName: user.userName,
         email: user.email,
         firstName: user.first_name,
         lastName: user.last_name,
@@ -348,18 +426,12 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    const isAdminUser =
-      user.first_name?.toLowerCase() === 'admin' ||
-      user.email?.toLowerCase() === 'admin';
-
-    // 1. Verify current password
+    // 1. Verify current password securely
     let isMatch = false;
-    if (isAdminUser) {
-      isMatch =
-        user.password_hash === dto.currentPassword ||
-        (await bcrypt.compare(dto.currentPassword, user.password_hash).catch(() => false));
-    } else {
+    if (user.password_hash?.startsWith('$2')) {
       isMatch = await bcrypt.compare(dto.currentPassword, user.password_hash);
+    } else if (user.password_hash) {
+      isMatch = user.password_hash === dto.currentPassword;
     }
 
     if (!isMatch) {
@@ -371,8 +443,8 @@ export class AuthService {
       throw new BadRequestException('New password cannot be the same as your current password.');
     }
 
-    // 3. Store plain text for admin, bcrypt hash for standard users
-    const newHash = isAdminUser ? dto.newPassword : await bcrypt.hash(dto.newPassword, 10);
+    // 3. Always store secure bcrypt hash for all users
+    const newHash = await bcrypt.hash(dto.newPassword, 10);
 
     // 4. Update password in database
     await this.prisma.user.update({
@@ -383,7 +455,7 @@ export class AuthService {
       },
     });
 
-    this.logger.log(`Password successfully updated for user ${user.email}`);
+    this.logger.log(`Password successfully updated for user ${user.userName || user.email}`);
 
     return {
       success: true,
@@ -404,11 +476,8 @@ export class AuthService {
       throw new BadRequestException('Password must be at least 6 characters long');
     }
 
-    const isAdminUser =
-      user.first_name?.toLowerCase() === 'admin' ||
-      user.email?.toLowerCase() === 'admin';
-
-    const newHash = isAdminUser ? newPassword : await bcrypt.hash(newPassword, 10);
+    // Always store secure bcrypt hash for all users
+    const newHash = await bcrypt.hash(newPassword, 10);
 
     await this.prisma.user.update({
       where: { id: targetUserId },

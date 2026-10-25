@@ -4,11 +4,14 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RedisService } from '../../redis/redis.service';
 import { Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 
 export interface CreateEmployeeDto {
-  email: string;
+  userName?: string;
+  username?: string;
+  email?: string;
   password?: string;
   firstName: string;
   lastName: string;
@@ -18,6 +21,22 @@ export interface CreateEmployeeDto {
   designation: string;
   department: string;
   baseSalary: number;
+  centerId?: string;
+}
+
+export interface UpdateEmployeeDto {
+  userName?: string;
+  username?: string;
+  email?: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  roleId?: string;
+  employeeCode?: string;
+  designation?: string;
+  department?: string;
+  baseSalary?: number;
+  status?: string;
   centerId?: string;
 }
 
@@ -31,7 +50,10 @@ export interface ManualPunchDto {
 
 @Injectable()
 export class HrService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private redisService: RedisService,
+  ) {}
 
   async getEmployees(centerId?: string) {
     const whereClause: any = {};
@@ -45,6 +67,7 @@ export class HrService {
         user: {
           select: {
             id: true,
+            userName: true,
             email: true,
             first_name: true,
             last_name: true,
@@ -73,9 +96,15 @@ export class HrService {
   async createEmployee(centerId: string, dto: CreateEmployeeDto, creatorId?: string) {
     const targetCenterId = dto.centerId || centerId;
 
+    const userName = (dto.userName || dto.username || (dto.email ? dto.email.split('@')[0] : '')).trim().toLowerCase();
+    if (!userName) {
+      throw new BadRequestException('Username (userName) is required');
+    }
+
     // Disallow creating "admin" via system
     if (
-      dto.email.trim().toLowerCase() === 'admin' ||
+      userName === 'admin' ||
+      (dto.email && dto.email.trim().toLowerCase() === 'admin') ||
       dto.firstName.trim().toLowerCase() === 'admin' ||
       dto.employeeCode.trim().toLowerCase() === 'admin'
     ) {
@@ -84,12 +113,23 @@ export class HrService {
       );
     }
 
-    // Check if user email already exists
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    // Check if userName already exists
+    const existingUserName = await this.prisma.user.findFirst({
+      where: { userName: { equals: userName, mode: 'insensitive' } },
     });
-    if (existingUser) {
-      throw new BadRequestException(`Email ${dto.email} is already in use`);
+    if (existingUserName) {
+      throw new BadRequestException(`Username "${userName}" is already in use`);
+    }
+
+    // Check if email already exists (if provided)
+    const email = dto.email ? dto.email.trim().toLowerCase() : null;
+    if (email) {
+      const existingUser = await this.prisma.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' } },
+      });
+      if (existingUser) {
+        throw new BadRequestException(`Email "${email}" is already in use`);
+      }
     }
 
     // Check if employee code exists
@@ -109,7 +149,8 @@ export class HrService {
     return this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
-          email: dto.email,
+          userName: userName,
+          email: email,
           password_hash: passwordHash,
           first_name: dto.firstName,
           last_name: dto.lastName,
@@ -136,6 +177,7 @@ export class HrService {
           user: {
             select: {
               id: true,
+              userName: true,
               email: true,
               first_name: true,
               last_name: true,
@@ -148,6 +190,145 @@ export class HrService {
 
       return employee;
     });
+  }
+
+  async updateEmployeeStatus(employeeId: string, status: string, updaterId?: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: { user: true },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const emp = await tx.employee.update({
+        where: { id: employeeId },
+        data: {
+          status,
+          updated_by: updaterId,
+        },
+        include: {
+          user: true,
+          center: true,
+        },
+      });
+
+      // Synchronize associated user status
+      const userStatus = status === 'ACTIVE' ? 'ACTIVE' : 'INACTIVE';
+      if (employee.user_id) {
+        await tx.user.update({
+          where: { id: employee.user_id },
+          data: {
+            status: userStatus,
+            updated_by: updaterId,
+          },
+        });
+      }
+
+      return emp;
+    });
+
+    // Invalidate user sessions if status is changed to inactive/terminated
+    if (status !== 'ACTIVE' && employee.user_id) {
+      await this.redisService.invalidateAllUserSessions(employee.user_id);
+    }
+
+    return updated;
+  }
+
+  async updateEmployee(employeeId: string, dto: UpdateEmployeeDto, updaterId?: string) {
+    const employee = await this.prisma.employee.findUnique({
+      where: { id: employeeId },
+      include: { user: true },
+    });
+
+    if (!employee) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    if (dto.employeeCode && dto.employeeCode !== employee.employee_code) {
+      const existing = await this.prisma.employee.findUnique({
+        where: { employee_code: dto.employeeCode },
+      });
+      if (existing) {
+        throw new BadRequestException(`Employee code ${dto.employeeCode} already exists`);
+      }
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      // 1. Update user fields
+      if (employee.user_id) {
+        const userUpdateData: any = {
+          updated_by: updaterId,
+        };
+        if (dto.firstName) userUpdateData.first_name = dto.firstName.trim();
+        if (dto.lastName) userUpdateData.last_name = dto.lastName.trim();
+        if (dto.userName || dto.username) userUpdateData.userName = (dto.userName || dto.username)!.trim().toLowerCase();
+        if (dto.email !== undefined) userUpdateData.email = dto.email ? dto.email.trim().toLowerCase() : null;
+        if (dto.phone !== undefined) userUpdateData.phone = dto.phone;
+        if (dto.roleId) userUpdateData.role_id = dto.roleId;
+        if (dto.status) {
+          userUpdateData.status = dto.status === 'ACTIVE' ? 'ACTIVE' : 'INACTIVE';
+        }
+        if (dto.centerId) userUpdateData.center_id = dto.centerId;
+
+        await tx.user.update({
+          where: { id: employee.user_id },
+          data: userUpdateData,
+        });
+      }
+
+      // 2. Update employee fields
+      const empUpdateData: any = {
+        updated_by: updaterId,
+      };
+      if (dto.employeeCode) empUpdateData.employee_code = dto.employeeCode.trim();
+      if (dto.designation) empUpdateData.designation = dto.designation.trim();
+      if (dto.department) empUpdateData.department = dto.department.trim();
+      if (dto.baseSalary !== undefined) empUpdateData.base_salary = new Prisma.Decimal(dto.baseSalary);
+      if (dto.status) empUpdateData.status = dto.status;
+      if (dto.centerId) empUpdateData.center_id = dto.centerId;
+
+      return tx.employee.update({
+        where: { id: employeeId },
+        data: empUpdateData,
+        include: {
+          user: {
+            select: {
+              id: true,
+              userName: true,
+              email: true,
+              first_name: true,
+              last_name: true,
+              phone: true,
+              status: true,
+              role: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          center: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+            },
+          },
+        },
+      });
+    });
+
+    // Invalidate sessions if employee status is deactivated
+    if (dto.status && dto.status !== 'ACTIVE' && employee.user_id) {
+      await this.redisService.invalidateAllUserSessions(employee.user_id);
+    }
+
+    return updated;
   }
 
   async getDailyAttendance(centerId: string, dateStr?: string) {

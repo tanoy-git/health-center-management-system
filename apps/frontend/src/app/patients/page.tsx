@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { apiRequest } from '@/lib/api';
+import { toast } from '@/components/Toast';
 import {
   Users,
   Search,
@@ -22,15 +23,22 @@ import {
   Pencil,
 } from 'lucide-react';
 
+import DateRangeFilter, {
+  DateFilterValue,
+  getDefaultDateFilter,
+  filterMatchesDate,
+} from '@/components/DateRangeFilter';
+
 export default function PatientsPage() {
   const { activeCenter, hasPermission } = useAuth();
   const [patients, setPatients] = useState<any[]>([]);
   const [search, setSearch] = useState('');
+  const [dateFilter, setDateFilter] = useState<DateFilterValue>(getDefaultDateFilter());
+  const [genderFilter, setGenderFilter] = useState('ALL');
   const [loading, setLoading] = useState(true);
   const [selectedPatient, setSelectedPatient] = useState<any | null>(null);
   const [isRegisterModalOpen, setIsRegisterModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [marketingOfficers, setMarketingOfficers] = useState<any[]>([]);
 
   // Edit State
@@ -94,7 +102,7 @@ export default function PatientsPage() {
       const data = await apiRequest(`/patients/${id}`);
       setSelectedPatient(data);
     } catch (err: any) {
-      alert(err.message || 'Error loading patient details');
+      toast.error(err.message || 'Error loading patient details');
     }
   };
 
@@ -107,7 +115,7 @@ export default function PatientsPage() {
         body: JSON.stringify(formData),
       });
 
-      setToastMessage(`Patient successfully registered with ${res.uhid}`);
+      toast.success(`Patient successfully registered with UHID: ${res.uhid}`);
       setIsRegisterModalOpen(false);
       setFormData({
         firstName: '',
@@ -122,9 +130,8 @@ export default function PatientsPage() {
         referredById: '',
       });
       loadPatients();
-      setTimeout(() => setToastMessage(null), 5000);
     } catch (err: any) {
-      alert(err.message || 'Registration failed');
+      toast.error(err.message || 'Registration failed');
     } finally {
       setSubmitting(false);
     }
@@ -158,32 +165,33 @@ export default function PatientsPage() {
         body: JSON.stringify(editFormData),
       });
 
-      setToastMessage(`Patient ${res.uhid} (${res.first_name} ${res.last_name}) updated successfully`);
+      toast.success(`Patient ${res.uhid} (${res.first_name} ${res.last_name}) updated successfully`);
       setIsEditModalOpen(false);
       setEditingPatient(null);
       loadPatients();
       if (selectedPatient?.id === editingPatient.id) {
         handleSelectPatient(editingPatient.id);
       }
-      setTimeout(() => setToastMessage(null), 5000);
     } catch (err: any) {
-      alert(err.message || 'Update failed');
+      toast.error(err.message || 'Update failed');
     } finally {
       setSubmitting(false);
     }
   };
 
+  // Computed Filtered Patients list
+  const displayedPatients = patients.filter((p) => {
+    if (!filterMatchesDate(p.created_at, dateFilter)) return false;
+    if (genderFilter !== 'ALL' && (p.gender || '').toUpperCase() !== genderFilter.toUpperCase()) {
+      return false;
+    }
+    return true;
+  });
+
   return (
     <div className="space-y-6">
-      {/* Toast Alert */}
-      {toastMessage && (
-        <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-4 text-xs font-semibold text-emerald-600 dark:text-emerald-400 shadow-sm animate-in fade-in">
-          <CheckCircle className="h-4 w-4 shrink-0" />
-          <span>{toastMessage}</span>
-        </div>
-      )}
 
-      {/* Header Bar */}
+      {/* Top Banner */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -210,16 +218,39 @@ export default function PatientsPage() {
         )}
       </div>
 
-      {/* Search Bar */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by UHID (e.g. UHID-2026-10-000001), Name, or Phone..."
-          className="w-full rounded-lg border border-input bg-card pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
-        />
+      {/* Filter Controls Bar (Search + Gender + Date Range Filter) */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl border border-border bg-card shadow-xs">
+        <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px]">
+          {/* Search Bar */}
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by UHID, Name, or Phone..."
+              className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary shadow-xs"
+            />
+          </div>
+
+          {/* Gender Filter */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-semibold text-muted-foreground">Gender:</span>
+            <select
+              value={genderFilter}
+              onChange={(e) => setGenderFilter(e.target.value)}
+              className="rounded-lg border border-input bg-background px-2.5 py-1.5 text-xs font-semibold text-foreground focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer shadow-xs"
+            >
+              <option value="ALL">All Genders</option>
+              <option value="MALE">Male</option>
+              <option value="FEMALE">Female</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Date Filter (Daily by default) */}
+        <DateRangeFilter value={dateFilter} onChange={setDateFilter} />
       </div>
 
       {/* Main Grid: Patient List & Detail Inspector */}
@@ -227,9 +258,16 @@ export default function PatientsPage() {
         {/* Patients Table */}
         <div className="lg:col-span-2 rounded-xl border border-border bg-card shadow-sm overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between bg-muted/20">
-            <span className="text-xs font-semibold text-foreground">
-              Registered Patients ({patients.length})
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-foreground">
+                Registered Patients ({displayedPatients.length})
+              </span>
+              {displayedPatients.length !== patients.length && (
+                <span className="text-[10px] rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 font-medium px-2 py-0.5">
+                  Filtered from {patients.length} total
+                </span>
+              )}
+            </div>
             <span className="text-[11px] text-muted-foreground">
               Click any patient to inspect clinical history
             </span>
@@ -239,14 +277,14 @@ export default function PatientsPage() {
             <div className="py-12 text-center text-xs text-muted-foreground">
               Loading patients...
             </div>
-          ) : patients.length === 0 ? (
+          ) : displayedPatients.length === 0 ? (
             <div className="py-12 text-center space-y-2">
               <Users className="h-8 w-8 text-muted-foreground mx-auto opacity-50" />
               <p className="text-xs font-medium text-foreground">
-                No patients found at this center.
+                No patients found for the selected date & filter.
               </p>
               <p className="text-[11px] text-muted-foreground">
-                Patients registered at other hospital centers are strictly isolated.
+                Change the date period (Daily, Monthly, Range) or check branch selection.
               </p>
             </div>
           ) : (
@@ -263,7 +301,7 @@ export default function PatientsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {patients.map((p) => {
+                  {displayedPatients.map((p) => {
                     const isSelected = selectedPatient?.id === p.id;
                     return (
                       <tr

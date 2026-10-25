@@ -7,10 +7,12 @@ import {
   Query,
   UseGuards,
   Patch,
+  Put,
 } from '@nestjs/common';
 import {
   HrService,
   CreateEmployeeDto,
+  UpdateEmployeeDto,
   ManualPunchDto,
 } from './hr.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -40,6 +42,26 @@ export class HrController {
     @CurrentUser('id') userId: string,
   ) {
     return this.hrService.createEmployee(centerId, body, userId);
+  }
+
+  @Patch('employees/:id/status')
+  @RequirePermissions('hr:employees:write')
+  async updateEmployeeStatus(
+    @Param('id') id: string,
+    @Body('status') status: string,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.hrService.updateEmployeeStatus(id, status, userId);
+  }
+
+  @Put('employees/:id')
+  @RequirePermissions('hr:employees:write')
+  async updateEmployee(
+    @Param('id') id: string,
+    @Body() body: UpdateEmployeeDto,
+    @CurrentUser('id') userId: string,
+  ) {
+    return this.hrService.updateEmployee(id, body, userId);
   }
 
   @Get('attendance')

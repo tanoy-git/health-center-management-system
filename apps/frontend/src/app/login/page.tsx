@@ -8,6 +8,7 @@ import {
   ShieldCheck,
   Lock,
   Mail,
+  User,
   ArrowRight,
   AlertCircle,
   Building2,
@@ -22,7 +23,7 @@ import {
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login, initialSetup } = useAuth();
+  const { user, loading, login, initialSetup } = useAuth();
 
   // Status check: is initial bootstrap required?
   const [checkingStatus, setCheckingStatus] = useState(true);
@@ -36,6 +37,7 @@ export default function LoginPage() {
   // Initial setup form state (only used when userCount === 0)
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [setupUserName, setSetupUserName] = useState('');
   const [setupEmail, setSetupEmail] = useState('');
   const [setupPassword, setSetupPassword] = useState('');
   const [setupConfirmPassword, setSetupConfirmPassword] = useState('');
@@ -44,6 +46,13 @@ export default function LoginPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // If already authenticated, redirect immediately without delay
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace('/');
+    }
+  }, [user, loading, router]);
 
   // Check if system has any users in the database
   useEffect(() => {
@@ -68,10 +77,9 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       await login(email, password);
-      router.push('/');
+      router.replace('/');
     } catch (err: any) {
       setError(err.message || 'Login failed. Please check your credentials.');
-    } finally {
       setSubmitting(false);
     }
   };
@@ -79,6 +87,11 @@ export default function LoginPage() {
   const handleSetupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    if (!setupUserName.trim()) {
+      setError('Username is required.');
+      return;
+    }
 
     if (setupPassword !== setupConfirmPassword) {
       setError('Passwords do not match. Please verify.');
@@ -95,7 +108,8 @@ export default function LoginPage() {
       await initialSetup({
         firstName,
         lastName,
-        email: setupEmail,
+        userName: setupUserName.trim().toLowerCase(),
+        email: setupEmail.trim() || undefined,
         password: setupPassword,
         phone,
         centerName,
@@ -103,6 +117,15 @@ export default function LoginPage() {
       router.push('/');
     } catch (err: any) {
       setError(err.message || 'Initial setup failed. Please try again.');
+      if (
+        err.message?.includes('already been completed') ||
+        err.message?.includes('already provisioned') ||
+        err.message?.includes('database') ||
+        err.status === 400
+      ) {
+        // System is already provisioned, switch to sign-in form
+        setTimeout(() => setSetupRequired(false), 1500);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -113,16 +136,31 @@ export default function LoginPage() {
     setPassword(demoPass);
   };
 
+  if (user) {
+    return (
+      <div className="min-h-[85vh] flex items-center justify-center py-8 px-4">
+        <div className="rounded-2xl border border-border bg-card p-8 shadow-xl flex flex-col items-center justify-center space-y-3">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <p className="text-xs text-muted-foreground">Opening clinical workspace...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-[85vh] flex items-center justify-center py-8 px-4">
       <div className="w-full max-w-md space-y-6">
         {/* Brand Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25">
-            <ShieldCheck className="h-7 w-7" />
+            <img
+              src="/carewave-logo-cropped.png"
+              alt="CareWave"
+              className="h-full w-full object-contain"
+            />
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            Aegis Enterprise HIS
+            CareWave
           </h1>
           <p className="text-xs text-muted-foreground">
             Multi-Tenant Clinical ERP & Hospital Management System
@@ -163,7 +201,7 @@ export default function LoginPage() {
             <form onSubmit={handleSetupSubmit} className="space-y-3.5">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-foreground">First Name</label>
+                  <label className="text-[11px] font-medium text-foreground">First Name *</label>
                   <input
                     type="text"
                     required
@@ -174,7 +212,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-foreground">Last Name</label>
+                  <label className="text-[11px] font-medium text-foreground">Last Name *</label>
                   <input
                     type="text"
                     required
@@ -187,22 +225,36 @@ export default function LoginPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-foreground">Super Admin Email</label>
+                <label className="text-[11px] font-medium text-foreground">Username (userName) *</label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <input
-                    type="email"
+                    type="text"
                     required
-                    value={setupEmail}
-                    onChange={(e) => setSetupEmail(e.target.value)}
-                    placeholder="admin@yourhospital.com"
+                    value={setupUserName}
+                    onChange={(e) => setSetupUserName(e.target.value)}
+                    placeholder="e.g. superadmin or alexander"
                     className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[11px] font-medium text-foreground">Primary Healthcare Center Name</label>
+                <label className="text-[11px] font-medium text-foreground">Super Admin Email (Optional)</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <input
+                    type="email"
+                    value={setupEmail}
+                    onChange={(e) => setSetupEmail(e.target.value)}
+                    placeholder="admin@yourhospital.com (optional)"
+                    className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-foreground">Primary Healthcare Center Name *</label>
                 <div className="relative">
                   <Building2 className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <input
@@ -229,7 +281,7 @@ export default function LoginPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-foreground">Password</label>
+                  <label className="text-[11px] font-medium text-foreground">Password *</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                     <input
@@ -244,7 +296,7 @@ export default function LoginPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-medium text-foreground">Confirm Password</label>
+                  <label className="text-[11px] font-medium text-foreground">Confirm Password *</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                     <input
@@ -276,6 +328,16 @@ export default function LoginPage() {
                   </>
                 )}
               </button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSetupRequired(false)}
+                  className="text-xs text-blue-600 hover:text-blue-700 hover:underline font-medium"
+                >
+                  System already initialized? Switch to Sign In
+                </button>
+              </div>
             </form>
           </div>
         ) : (
@@ -303,16 +365,16 @@ export default function LoginPage() {
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-foreground">
-                  Work Email / Username
+                  Username
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                   <input
                     type="text"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="admin or doctor@aegis.health"
+                    placeholder="e.g. admin or dr.marcus"
                     className="w-full rounded-lg border border-input bg-background pl-9 pr-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
                   />
                 </div>
@@ -367,7 +429,23 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      handleQuickLogin('admin@aegis.health', 'Admin@123456')
+                      handleQuickLogin('tanoy', '123456')
+                    }
+                    className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 hover:bg-muted p-2 text-left transition-colors"
+                  >
+                    <Building2 className="h-4 w-4 text-blue-600 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold truncate">Tanoy (Super Admin)</p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        @tanoy (Primary)
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleQuickLogin('admin', 'Admin@123456')
                     }
                     className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 hover:bg-muted p-2 text-left transition-colors"
                   >
@@ -375,7 +453,7 @@ export default function LoginPage() {
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold truncate">Super Admin</p>
                       <p className="text-[10px] text-muted-foreground truncate">
-                        Metro / All Centers
+                        @admin (All Centers)
                       </p>
                     </div>
                   </button>
@@ -383,7 +461,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      handleQuickLogin('dr.marcus@aegis.health', 'Staff@123456')
+                      handleQuickLogin('dr.marcus', 'Staff@123456')
                     }
                     className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 hover:bg-muted p-2 text-left transition-colors"
                   >
@@ -391,7 +469,7 @@ export default function LoginPage() {
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold truncate">Dr. Marcus</p>
                       <p className="text-[10px] text-muted-foreground truncate">
-                        Center A (Metro)
+                        @dr.marcus (Metro)
                       </p>
                     </div>
                   </button>
@@ -399,7 +477,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      handleQuickLogin('cashier.metro@aegis.health', 'Staff@123456')
+                      handleQuickLogin('cashier.metro', 'Staff@123456')
                     }
                     className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 hover:bg-muted p-2 text-left transition-colors"
                   >
@@ -407,7 +485,7 @@ export default function LoginPage() {
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold truncate">Cashier Elena</p>
                       <p className="text-[10px] text-muted-foreground truncate">
-                        Center A (Billing)
+                        @cashier.metro (Billing)
                       </p>
                     </div>
                   </button>
@@ -415,7 +493,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      handleQuickLogin('dr.sarah@aegis.health', 'Staff@123456')
+                      handleQuickLogin('dr.sarah', 'Staff@123456')
                     }
                     className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 hover:bg-muted p-2 text-left transition-colors"
                   >
@@ -423,7 +501,7 @@ export default function LoginPage() {
                     <div className="min-w-0">
                       <p className="text-[11px] font-semibold truncate">Dr. Sarah</p>
                       <p className="text-[10px] text-muted-foreground truncate">
-                        Center B (Westside)
+                        @dr.sarah (Westside)
                       </p>
                     </div>
                   </button>

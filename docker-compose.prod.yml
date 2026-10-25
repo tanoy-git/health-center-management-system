@@ -1,5 +1,4 @@
 # CareWave EMR v2.0 - Production Docker Compose for VPS Deployment
-version: '3.8'
 
 services:
   # ----------------------------------------------------

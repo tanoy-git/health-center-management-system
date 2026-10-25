@@ -15,7 +15,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:push": "prisma db push",
-    "prisma:seed": "ts-node prisma/seed.ts",
+    "prisma:seed": "node dist/prisma/seed.js",
+    "prisma:seed:dev": "ts-node prisma/seed.ts",
     "db:sync": "node scripts/db-sync.js"
   },
   "dependencies": {

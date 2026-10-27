@@ -76,15 +76,17 @@ services:
       context: ./apps/frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/health-erp}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/health-erp/api/v1}
     container_name: aegis-prod-frontend
     restart: always
     environment:
       NODE_ENV: production
       PORT: 3000
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+      NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/health-erp}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/health-erp/api/v1}
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3001:3000"
     depends_on:
       - backend
     networks:

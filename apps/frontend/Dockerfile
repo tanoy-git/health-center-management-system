@@ -12,8 +12,10 @@ RUN npm install
 # Copy application source
 COPY . .
 
-# Argument to pass API URL during build if needed
-ARG NEXT_PUBLIC_API_URL
+# Arguments to pass Base Path and API URL during build
+ARG NEXT_PUBLIC_BASE_PATH=/health-erp
+ENV NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH}
+ARG NEXT_PUBLIC_API_URL=/health-erp/api/v1
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 # Build Next.js application
@@ -26,6 +28,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV NEXT_PUBLIC_BASE_PATH=/health-erp
+ENV NEXT_PUBLIC_API_URL=/health-erp/api/v1
 
 # Copy necessary production artifacts from builder
 COPY --from=builder /app/package*.json ./

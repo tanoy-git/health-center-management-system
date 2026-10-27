@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, getApiBase } from '@/lib/api';
 import { toast } from '@/components/Toast';
 import {
   Activity,
@@ -323,8 +323,15 @@ export default function DiagnosticsPage() {
       const formData = new FormData();
       formData.append('file', file);
 
-      const res = await fetch('/api/v1/storage/upload', {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('aegis_token') : null;
+      const activeCenterId = typeof window !== 'undefined' ? localStorage.getItem('aegis_active_center_id') : null;
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      if (activeCenterId) headers['x-center-id'] = activeCenterId;
+
+      const res = await fetch(`${getApiBase()}/storage/upload`, {
         method: 'POST',
+        headers,
         body: formData,
       });
       const data = await res.json();

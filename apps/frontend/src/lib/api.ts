@@ -1,4 +1,15 @@
-function getApiBase(): string {
+export function getBasePath(): string {
+  const configured = process.env.NEXT_PUBLIC_BASE_PATH;
+  return configured !== undefined ? configured : '/health-erp';
+}
+
+export function assetUrl(path: string): string {
+  const base = getBasePath().replace(/\/$/, '');
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${base}${cleanPath}`;
+}
+
+export function getApiBase(): string {
   if (typeof window !== 'undefined') {
     const publicUrl = process.env.NEXT_PUBLIC_API_URL;
     if (publicUrl && publicUrl.trim()) {
@@ -9,7 +20,8 @@ function getApiBase(): string {
       }
     }
   }
-  return '/api/v1';
+  const basePath = getBasePath().replace(/\/$/, '');
+  return `${basePath}/api/v1`;
 }
 
 export class ApiError extends Error {
@@ -66,8 +78,10 @@ export async function apiRequest<T = any>(
     if (typeof window !== 'undefined') {
       localStorage.removeItem('aegis_token');
       localStorage.removeItem('aegis_user');
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login';
+      const basePath = getBasePath().replace(/\/$/, '');
+      const loginPath = `${basePath}/login`;
+      if (window.location.pathname !== loginPath && window.location.pathname !== '/login') {
+        window.location.href = loginPath;
       }
     }
     throw new ApiError(errorMsg, 401, data);

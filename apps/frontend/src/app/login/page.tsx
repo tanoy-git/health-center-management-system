@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { apiRequest } from '@/lib/api';
+import { apiRequest, assetUrl } from '@/lib/api';
 import {
   ShieldCheck,
   Lock,
@@ -154,7 +154,7 @@ export default function LoginPage() {
         <div className="text-center space-y-2">
           <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25">
             <img
-              src="/carewave-logo-cropped.png"
+              src={assetUrl('/carewave-logo-cropped.png')}
               alt="CareWave"
               className="h-full w-full object-contain"
             />

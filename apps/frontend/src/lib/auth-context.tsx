@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { apiRequest } from './api';
+import { apiRequest, getBasePath } from './api';
 
 export interface Center {
   id: string;
@@ -196,7 +196,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('aegis_active_center_name');
       setUser(null);
       setActiveCenter(null);
-      window.location.href = '/login';
+      const basePath = getBasePath().replace(/\/$/, '');
+      window.location.href = `${basePath}/login`;
     }
   };
 

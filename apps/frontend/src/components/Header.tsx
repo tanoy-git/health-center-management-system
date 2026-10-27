@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useTheme } from '@/lib/theme-context';
+import { assetUrl } from '@/lib/api';
 import {
   Building2,
   ChevronDown,
@@ -51,7 +52,7 @@ export default function Header() {
           <div className="flex items-center gap-2 sm:gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white border border-border/80 shadow-sm p-1 shrink-0 overflow-hidden">
               <img
-                src="/carewave-logo-cropped.png"
+                src={assetUrl('/carewave-logo-cropped.png')}
                 alt="CareWave"
                 className="h-full w-full object-contain"
               />

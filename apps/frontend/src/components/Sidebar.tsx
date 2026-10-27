@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { useSidebar } from '@/lib/sidebar-context';
+import { assetUrl } from '@/lib/api';
 import {
   LayoutDashboard,
   Users,
@@ -210,7 +211,7 @@ export default function Sidebar() {
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-border/80 shadow-sm p-1 shrink-0 overflow-hidden">
               <img
-                src="/carewave-logo-cropped.png"
+                src={assetUrl('/carewave-logo-cropped.png')}
                 alt="CareWave"
                 className="h-full w-full object-contain"
               />

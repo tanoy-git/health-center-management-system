@@ -105,9 +105,9 @@ PART 2: CONFIGURATION & STEPS FOR DEPLOYING ON A VPS SERVER (Ubuntu/Debian)
    > sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 4. CLONE THE REPOSITORY ON YOUR VPS
-   > cd /var/www
-   > git clone <YOUR_GIT_REPO_URL> health-center
-   > cd health-center
+   > cd /home/tny/source
+   > git clone <YOUR_GIT_REPO_URL> health-center-management-system
+   > cd health-center-management-system
 
 5. PRODUCTION ENVIRONMENT CONFIGURATION (.env)
    Create your production environment file:
@@ -216,11 +216,11 @@ PART 2: CONFIGURATION & STEPS FOR DEPLOYING ON A VPS SERVER (Ubuntu/Debian)
    Set up daily automated PostgreSQL backups:
    > sudo crontab -e
    Add this line (runs daily at 2:00 AM):
-   0 2 * * * docker compose -f /var/www/health-center/docker-compose.prod.yml exec -T postgres pg_dump -U aegis_prod_user aegis_his_production > /var/backups/aegis_$(date +\%F).sql
+   0 2 * * * docker compose -f /home/tny/source/health-center-management-system/docker-compose.prod.yml exec -T postgres pg_dump -U aegis_prod_user aegis_his_production > /var/backups/aegis_$(date +\%F).sql
 
 9. FUTURE UPDATES / REDEPLOYMENT COMMAND
    Whenever you push new code to Git:
-   > cd /var/www/health-center
+   > cd /home/tny/source/health-center-management-system
    > git pull origin main
    > docker compose -f docker-compose.prod.yml up -d --build
    > docker compose -f docker-compose.prod.yml exec backend npx prisma migrate deploy

@@ -5,7 +5,7 @@ echo "=========================================================="
 echo "  Aegis Enterprise HIS v2.0 - VPS Production Deployment"
 echo "=========================================================="
 
-DEPLOY_PATH="/home/tny/source/health-center"
+DEPLOY_PATH="/home/tny/source/health-center-management-system"
 
 # Ensure deploy directory exists
 if [ ! -d "$DEPLOY_PATH" ]; then

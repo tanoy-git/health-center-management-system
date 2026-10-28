@@ -51,7 +51,7 @@ jobs:
           envs: GH_PAT
           script: |
             set -e
-            DEPLOY_PATH="/home/tny/source/health-center"
+            DEPLOY_PATH="/home/tny/source/health-center-management-system"
 
             # 1. Clone repository if not already present on VPS
             if [ ! -d "$DEPLOY_PATH/.git" ]; then

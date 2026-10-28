@@ -153,7 +153,11 @@ PART 2: CONFIGURATION & STEPS FOR DEPLOYING ON A VPS SERVER (Ubuntu/Debian)
    - AutoApply AI on '/autoapply' (port 3002) & API on '/autoapply/api/' (port 8000)
 
    Edit your Nginx site configuration:
-   > sudo nano /etc/nginx/sites-available/default
+   > sudo nano /etc/nginx/sites-available/aegis
+
+   Enable the site configuration and remove default to prevent conflicts:
+   > sudo ln -sf /etc/nginx/sites-available/aegis /etc/nginx/sites-enabled/
+   > sudo rm -f /etc/nginx/sites-enabled/default
 
    Paste the unified configuration:
    -----------------------------------------------------------------------------

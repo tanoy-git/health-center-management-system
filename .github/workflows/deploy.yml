@@ -1,0 +1,97 @@
+name: CI/CD Auto Deploy to VPS
+
+on:
+  push:
+    branches:
+      - prod # Trigger automatically on push to prod branch
+  workflow_dispatch: # Allow manual trigger anytime
+
+jobs:
+  build-and-validate:
+    name: Build & Validate Backend and Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Monorepo Dependencies
+        run: npm ci || npm install
+
+      - name: Generate Prisma Client
+        run: npm run prisma:generate
+
+      - name: Build NestJS Backend
+        run: npm run build:backend
+
+      - name: Build Next.js Frontend
+        run: npm run build:frontend
+        env:
+          NEXT_PUBLIC_BASE_PATH: /health-erp
+          NEXT_PUBLIC_API_URL: /health-erp/api/v1
+
+  deploy:
+    name: Deploy to Remote VPS
+    needs: build-and-validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Execute Remote SSH Deployment
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          envs: GH_PAT
+          script: |
+            set -e
+            DEPLOY_PATH="/home/tny/source/health-center"
+
+            # 1. Clone repository if not already present on VPS
+            if [ ! -d "$DEPLOY_PATH/.git" ]; then
+              echo "📦 Cloning health-center-management-system repository..."
+              mkdir -p /home/tny/source
+              git clone -b prod https://$GH_PAT@github.com/tanoy-git/health-center-management-system.git "$DEPLOY_PATH"
+            fi
+
+            cd "$DEPLOY_PATH"
+
+            # 2. Pull latest commits from GitHub prod branch
+            echo "📥 Pulling latest commits from GitHub prod branch..."
+            git remote set-url origin https://$GH_PAT@github.com/tanoy-git/health-center-management-system.git
+            git fetch origin prod
+            git reset --hard origin/prod
+
+            # 3. Ensure production environment file (.env) exists
+            if [ ! -f ".env" ]; then
+              if [ -f ".env.example" ]; then
+                echo "⚙️ Initializing production .env from .env.example..."
+                cp .env.example .env
+                RANDOM_JWT=$(openssl rand -hex 32 2>/dev/null || date +%s%N | sha256sum | head -c 64)
+                sed -i "s/generate_a_random_64_character_secret_string/$RANDOM_JWT/g" .env 2>/dev/null || true
+              fi
+            fi
+
+            # 4. Build and restart Docker containers in detached mode
+            echo "🐳 Rebuilding and starting production Docker containers..."
+            docker compose -f docker-compose.prod.yml up -d --build
+
+            # 5. Wait for containers to start
+            sleep 5
+
+            # 6. Prune unused images to maintain disk hygiene
+            docker image prune -f
+
+            # 7. Reload Nginx reverse proxy
+            sudo systemctl reload nginx 2>/dev/null || true
+
+            echo "=========================================================="
+            echo "✅ Auto-deployment finished successfully! Health ERP is live."
+            echo "=========================================================="
+

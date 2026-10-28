@@ -300,13 +300,19 @@ export default function HrPage() {
         </div>
 
         {activeTab === 'employees' && hasPermission('hr:employees:write') && (
-          <button
-            onClick={() => setOnboardModalOpen(true)}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 px-4 py-2 text-xs font-semibold text-white shadow-sm"
-          >
-            <Plus className="h-4 w-4" />
-            <span>Onboard Employee</span>
-          </button>
+          <div className="relative group inline-block" title="Disabled in demo mode">
+            <button
+              disabled
+              onClick={() => setOnboardModalOpen(true)}
+              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm opacity-50 cursor-not-allowed pointer-events-none"
+            >
+              <Plus className="h-4 w-4" />
+              <span>Onboard Employee</span>
+            </button>
+            <div className="pointer-events-none absolute bottom-full mb-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-slate-900 dark:bg-slate-800 px-2.5 py-1 text-[11px] font-medium text-white shadow-md opacity-0 transition-opacity group-hover:opacity-100 z-50">
+              Disabled in demo mode
+            </div>
+          </div>
         )}
 
         {activeTab === 'payroll' && hasPermission('hr:payroll:generate') && (

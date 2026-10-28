@@ -10,16 +10,30 @@ const cleanBasePath =
 const nextConfig = {
   reactStrictMode: true,
   basePath: cleanBasePath,
+  async redirects() {
+    if (!cleanBasePath) return [];
+    return [
+      {
+        source: '/',
+        destination: cleanBasePath,
+        basePath: false,
+        permanent: false,
+      },
+    ];
+  },
   async rewrites() {
+    const isDocker = Boolean(process.env.DOCKER_CONTAINER || process.env.IS_DOCKER);
+    const defaultHost = isDocker ? 'http://backend:4000' : 'http://localhost:4000';
+
     let backendUrl =
       process.env.BACKEND_INTERNAL_URL ||
       process.env.BACKEND_URL ||
       process.env.NEXT_PUBLIC_API_URL ||
-      'http://backend:4000';
+      defaultHost;
 
-    // If it's a relative path (e.g. '/api/v1' or '/health-erp/api/v1'), route internally to the backend container
+    // If it's a relative path (e.g. '/api/v1' or '/health-erp/api/v1'), route internally to the backend container or localhost
     if (backendUrl.startsWith('/')) {
-      backendUrl = 'http://backend:4000';
+      backendUrl = defaultHost;
     }
 
     // Strip trailing slashes and any duplicate /api/v1 suffix

@@ -49,6 +49,8 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           envs: GH_PAT
+          timeout: 120s
+          command_timeout: 30m
           script: |
             set -e
             DEPLOY_PATH="/home/tny/source/health-center-management-system"
@@ -94,4 +96,3 @@ jobs:
             echo "=========================================================="
             echo "✅ Auto-deployment finished successfully! Health ERP is live."
             echo "=========================================================="
-

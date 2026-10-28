@@ -139,18 +139,20 @@ PART 2: CONFIGURATION & STEPS FOR DEPLOYING ON A VPS SERVER (Ubuntu/Debian)
    -----------------------------------------------------------------------------
 
 6. DEPLOY USING DOCKER COMPOSE ON VPS
-   Run all services (PostgreSQL, Redis, NestJS Backend, Next.js Frontend):
+   Run all services (PostgreSQL with pgvector, Redis, NestJS Backend, Next.js Frontend):
    > docker compose -f docker-compose.prod.yml up -d --build
-
-   Or if PostgreSQL and Redis are already running on the VPS, only start backend & frontend:
-   > docker compose -f docker-compose.prod.yml up -d --build backend frontend
 
    Apply database migrations and initial seed on first deployment:
    > docker compose -f docker-compose.prod.yml exec backend npx prisma migrate deploy
    > docker compose -f docker-compose.prod.yml exec backend npm run prisma:seed
 
-7. CONFIGURE NGINX REVERSE PROXY FOR DUAL HOSTING (Portfolio on / and Health ERP on /health-erp)
-   Edit your Nginx site configuration (e.g., /etc/nginx/sites-available/default or /etc/nginx/sites-available/portfolio):
+7. CONFIGURE NGINX REVERSE PROXY FOR TRIPLE HOSTING
+   Host Nginx proxies all three projects seamlessly:
+   - Portfolio on '/' (port 3000)
+   - Health Center ERP on '/health-erp' (port 3001) & API on '/health-erp/api/' (port 4000)
+   - AutoApply AI on '/autoapply' (port 3002) & API on '/autoapply/api/' (port 8000)
+
+   Edit your Nginx site configuration:
    > sudo nano /etc/nginx/sites-available/default
 
    Paste the unified configuration:
@@ -159,8 +161,41 @@ PART 2: CONFIGURATION & STEPS FOR DEPLOYING ON A VPS SERVER (Ubuntu/Debian)
        listen 80;
        server_name 139.59.125.139; # Replace with your domain when ready
 
+       client_max_body_size 50M;
+
        # ----------------------------------------------------
-       # 1. HEALTH ERP BACKEND API (NestJS on port 4000)
+       # 1. AUTOAPPLY AI BACKEND API (FastAPI on port 8000)
+       # ----------------------------------------------------
+       location /autoapply/api/ {
+           proxy_pass http://127.0.0.1:8000/api/;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_cache_bypass $http_upgrade;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+           proxy_read_timeout 300s;
+       }
+
+       # ----------------------------------------------------
+       # 2. AUTOAPPLY AI FRONTEND (Next.js on port 3002)
+       # ----------------------------------------------------
+       location /autoapply {
+           proxy_pass http://127.0.0.1:3002;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_cache_bypass $http_upgrade;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+       }
+
+       # ----------------------------------------------------
+       # 3. HEALTH ERP BACKEND API (NestJS on port 4000)
        # ----------------------------------------------------
        location /health-erp/api/ {
            proxy_pass http://127.0.0.1:4000/api/;
@@ -172,11 +207,10 @@ PART 2: CONFIGURATION & STEPS FOR DEPLOYING ON A VPS SERVER (Ubuntu/Debian)
            proxy_set_header X-Real-IP $remote_addr;
            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
            proxy_set_header X-Forwarded-Proto $scheme;
-           client_max_body_size 50M;
        }
 
        # ----------------------------------------------------
-       # 2. HEALTH ERP FRONTEND (Next.js on port 3001)
+       # 4. HEALTH ERP FRONTEND (Next.js on port 3001)
        # ----------------------------------------------------
        location /health-erp {
            proxy_pass http://127.0.0.1:3001;
@@ -191,7 +225,7 @@ PART 2: CONFIGURATION & STEPS FOR DEPLOYING ON A VPS SERVER (Ubuntu/Debian)
        }
 
        # ----------------------------------------------------
-       # 3. PORTFOLIO SITE (Next.js on port 3000)
+       # 5. PORTFOLIO SITE (Next.js on port 3000)
        # ----------------------------------------------------
        location / {
            proxy_pass http://127.0.0.1:3000;
@@ -203,7 +237,6 @@ PART 2: CONFIGURATION & STEPS FOR DEPLOYING ON A VPS SERVER (Ubuntu/Debian)
            proxy_set_header X-Real-IP $remote_addr;
            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
            proxy_set_header X-Forwarded-Proto $scheme;
-           client_max_body_size 25M;
        }
    }
    -----------------------------------------------------------------------------
@@ -212,17 +245,21 @@ PART 2: CONFIGURATION & STEPS FOR DEPLOYING ON A VPS SERVER (Ubuntu/Debian)
    > sudo nginx -t
    > sudo systemctl reload nginx
 
-8. AUTOMATED DATABASE BACKUP SETUP (Cron Job)
+8. SHARED POSTGRESQL DATABASE ARCHITECTURE (Multi-Schema)
+   - PostgreSQL runs in container 'aegis-prod-postgres' on 'aegis_internal_network' (port 5432).
+   - Health Center ERP tables reside in schema 'public'.
+   - AutoApply AI tables reside in schema 'job_automation'.
+   - Database extensions (pgvector, uuid-ossp) reside in 'public' and are shared.
+   - Zero duplicate database processes or memory bloat.
+
+9. AUTOMATED DATABASE BACKUP SETUP (Cron Job)
    Set up daily automated PostgreSQL backups:
    > sudo crontab -e
    Add this line (runs daily at 2:00 AM):
    0 2 * * * docker compose -f /home/tny/source/health-center-management-system/docker-compose.prod.yml exec -T postgres pg_dump -U aegis_prod_user aegis_his_production > /var/backups/aegis_$(date +\%F).sql
 
-9. FUTURE UPDATES / REDEPLOYMENT COMMAND
-   Whenever you push new code to Git:
-   > cd /home/tny/source/health-center-management-system
-   > git pull origin main
-   > docker compose -f docker-compose.prod.yml up -d --build
-   > docker compose -f docker-compose.prod.yml exec backend npx prisma migrate deploy
+10. CI/CD AUTO-DEPLOYMENT
+   Automated GitHub Actions deploy on push to prod:
+   > git push origin prod
 
 ================================================================================

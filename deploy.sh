@@ -38,7 +38,15 @@ docker compose -f docker-compose.prod.yml pull backend frontend
 
 # 4. Safely update containers in detached mode (Postgres and Redis are never interrupted)
 echo "🚀 Updating production containers..."
-docker compose -f docker-compose.prod.yml up -d backend frontend
+# Auto-heal any container still bound to legacy network name (volumes preserved)
+for c in aegis-prod-redis aegis-prod-postgres; do
+  if docker inspect "$c" 2>/dev/null | grep -q "health-center-management-system_aegis_internal_network"; then
+    echo "🔄 Recreating $c to attach to aegis_internal_network..."
+    docker rm -f "$c" 2>/dev/null || true
+  fi
+done
+
+docker compose -f docker-compose.prod.yml up -d
 
 # 5. Wait for backend API to initialize
 echo "⏳ Waiting for backend API to initialize..."

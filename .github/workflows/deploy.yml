@@ -7,37 +7,70 @@ on:
   workflow_dispatch: # Allow manual trigger anytime
 
 jobs:
-  build-and-validate:
-    name: Build & Validate Backend and Frontend
+  build-and-push-backend:
+    name: Build & Push Backend Image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
-        uses: actions/setup-node@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
         with:
-          node-version: 20
-          cache: 'npm'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Monorepo Dependencies
-        run: npm ci || npm install
+      - name: Build and Push Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/backend
+          push: true
+          tags: ghcr.io/tanoy-git/health-backend:prod
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Generate Prisma Client
-        run: npm run prisma:generate
+  build-and-push-frontend:
+    name: Build & Push Frontend Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - name: Build NestJS Backend
-        run: npm run build:backend
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Build Next.js Frontend
-        run: npm run build:frontend
-        env:
-          NEXT_PUBLIC_BASE_PATH: /health-erp
-          NEXT_PUBLIC_API_URL: /health-erp/api/v1
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./apps/frontend
+          push: true
+          tags: ghcr.io/tanoy-git/health-frontend:prod
+          build-args: |
+            NEXT_PUBLIC_BASE_PATH=/health-erp
+            NEXT_PUBLIC_API_URL=/health-erp/api/v1
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   deploy:
     name: Deploy to Remote VPS
-    needs: build-and-validate
+    needs: [build-and-push-backend, build-and-push-frontend]
     runs-on: ubuntu-latest
     steps:
       - name: Execute Remote SSH Deployment
@@ -50,7 +83,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           envs: GH_PAT
           timeout: 120s
-          command_timeout: 30m
+          command_timeout: 10m
           script: |
             set -e
             DEPLOY_PATH="/home/tny/source/health-center-management-system"
@@ -68,9 +101,10 @@ jobs:
 
             cd "$DEPLOY_PATH"
 
-            # 2. Update origin URL with PAT if provided
+            # 2. Authenticate Docker with GitHub Container Registry if GH_PAT is present
             if [ -n "$GH_PAT" ]; then
               git remote set-url origin https://$GH_PAT@github.com/tanoy-git/health-center-management-system.git
+              echo "$GH_PAT" | docker login ghcr.io -u tanoy-git --password-stdin 2>/dev/null || true
             fi
 
             # 3. Pull latest code and execute self-contained deploy script

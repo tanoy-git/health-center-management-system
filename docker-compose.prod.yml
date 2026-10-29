@@ -5,7 +5,7 @@ services:
   # 1. POSTGRESQL DATABASE (with pgvector for multi-tenant & shared SaaS schemas)
   # ----------------------------------------------------
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg16-alpine
     container_name: aegis-prod-postgres
     restart: always
     environment:
@@ -43,12 +43,10 @@ services:
       - aegis_internal_network
 
   # ----------------------------------------------------
-  # 3. NESTJS BACKEND API
+  # 3. NESTJS BACKEND API (Pre-built Cloud Image from GHCR)
   # ----------------------------------------------------
   backend:
-    build:
-      context: ./apps/backend
-      dockerfile: Dockerfile
+    image: ghcr.io/tanoy-git/health-backend:prod
     container_name: aegis-prod-backend
     restart: always
     environment:
@@ -69,15 +67,10 @@ services:
       - aegis_internal_network
 
   # ----------------------------------------------------
-  # 4. NEXT.JS FRONTEND WEB APP
+  # 4. NEXT.JS FRONTEND WEB APP (Pre-built Cloud Image from GHCR)
   # ----------------------------------------------------
   frontend:
-    build:
-      context: ./apps/frontend
-      dockerfile: Dockerfile
-      args:
-        NEXT_PUBLIC_BASE_PATH: ${NEXT_PUBLIC_BASE_PATH:-/health-erp}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/health-erp/api/v1}
+    image: ghcr.io/tanoy-git/health-frontend:prod
     container_name: aegis-prod-frontend
     restart: always
     environment:

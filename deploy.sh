@@ -36,7 +36,7 @@ fi
 
 # 3. Pull / Build and Launch Docker Containers
 echo "🐳 Rebuilding and starting Docker production containers..."
-docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml up -d --build --force-recreate --remove-orphans
 
 # 4. Wait for database and backend readiness
 echo "⏳ Waiting for backend API to initialize..."

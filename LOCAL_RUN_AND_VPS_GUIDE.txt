@@ -140,7 +140,7 @@ PART 2: CONFIGURATION & STEPS FOR DEPLOYING ON A VPS SERVER (Ubuntu/Debian)
 
 6. DEPLOY USING DOCKER COMPOSE ON VPS
    Run all services (PostgreSQL with pgvector, Redis, NestJS Backend, Next.js Frontend):
-   > docker compose -f docker-compose.prod.yml up -d --build
+   > docker compose -f docker-compose.prod.yml up -d --build --force-recreate
 
    Apply database migrations and initial seed on first deployment:
    > docker compose -f docker-compose.prod.yml exec backend npx prisma migrate deploy

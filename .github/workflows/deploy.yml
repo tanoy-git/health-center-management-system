@@ -59,40 +59,22 @@ jobs:
             if [ ! -d "$DEPLOY_PATH/.git" ]; then
               echo "📦 Cloning health-center-management-system repository..."
               mkdir -p /home/tny/source
-              git clone -b prod https://$GH_PAT@github.com/tanoy-git/health-center-management-system.git "$DEPLOY_PATH"
+              if [ -n "$GH_PAT" ]; then
+                git clone -b prod https://$GH_PAT@github.com/tanoy-git/health-center-management-system.git "$DEPLOY_PATH"
+              else
+                git clone -b prod https://github.com/tanoy-git/health-center-management-system.git "$DEPLOY_PATH"
+              fi
             fi
 
             cd "$DEPLOY_PATH"
 
-            # 2. Pull latest commits from GitHub prod branch
-            echo "📥 Pulling latest commits from GitHub prod branch..."
-            git remote set-url origin https://$GH_PAT@github.com/tanoy-git/health-center-management-system.git
-            git fetch origin prod
-            git reset --hard origin/prod
-
-            # 3. Ensure production environment file (.env) exists
-            if [ ! -f ".env" ]; then
-              if [ -f ".env.example" ]; then
-                echo "⚙️ Initializing production .env from .env.example..."
-                cp .env.example .env
-                RANDOM_JWT=$(openssl rand -hex 32 2>/dev/null || date +%s%N | sha256sum | head -c 64)
-                sed -i "s/generate_a_random_64_character_secret_string/$RANDOM_JWT/g" .env 2>/dev/null || true
-              fi
+            # 2. Update origin URL with PAT if provided
+            if [ -n "$GH_PAT" ]; then
+              git remote set-url origin https://$GH_PAT@github.com/tanoy-git/health-center-management-system.git
             fi
 
-            # 4. Build and restart Docker containers in detached mode
-            echo "🐳 Rebuilding and starting production Docker containers..."
-            docker compose -f docker-compose.prod.yml up -d --build
-
-            # 5. Wait for containers to start
-            sleep 5
-
-            # 6. Prune unused images to maintain disk hygiene
-            docker image prune -f
-
-            # 7. Reload Nginx reverse proxy
-            sudo systemctl reload nginx 2>/dev/null || true
-
-            echo "=========================================================="
-            echo "✅ Auto-deployment finished successfully! Health ERP is live."
-            echo "=========================================================="
+            # 3. Pull latest code and execute self-contained deploy script
+            git fetch origin prod
+            git reset --hard origin/prod
+            chmod +x deploy.sh
+            ./deploy.sh
